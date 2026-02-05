@@ -14,6 +14,10 @@ const Game = {
     // NEW: Track rows that have already announced "Waiting" to prevent spam
     announcedRows: new Set(),
 
+    // Anti-spam timers
+    _lastWaitAnnounce: 0,
+    _lastClaimTime: 0,
+
     // Game logic constraints
     isDrawing: false, // Lock to prevent rapid draw clicks
     isJoining: false, // Lock to prevent multiple join attempts
@@ -203,7 +207,6 @@ const Game = {
             const roomCode = await P2P.initHost();
 
             // Setup P2P callbacks
-            // Setup P2P callbacks
             P2P.onPlayerJoin = (playerId, count, name, ticket) => {
                 const playerData = this.handlePlayerJoin(playerId, name, ticket);
                 this.elements.playerCount.textContent = this.players.size;
@@ -216,7 +219,7 @@ const Game = {
                 if (this.players.has(playerId)) {
                     this.players.get(playerId).connected = false;
                 }
-                this.elements.playerCount.textContent = this.players.size; // Or keep count of active only?
+                this.elements.playerCount.textContent = this.players.size;
             };
 
             P2P.onWinClaim = (playerId) => {
@@ -413,7 +416,6 @@ const Game = {
             this.showToast('Đang kết nối...', 'info');
 
             // Setup P2P callbacks
-            // Setup P2P callbacks
             P2P.onConnected = () => {
                 this.elements.connectionStatus.classList.add('connected');
                 this.elements.connectionStatus.querySelector('span:last-child').textContent = 'Đã kết nối';
@@ -459,9 +461,10 @@ const Game = {
                 this.calledNumbers.add(number);
                 this.updateCurrentNumber(number);
                 this.markNumberCalled(number);
-                // DISABLED: Auto-marking (hardcore mode)
-                // this.highlightTicketNumber(number);
-                // this.checkWinCondition();
+
+                // CRITICAL: Re-check win condition immediately. 
+                // If the player had pre-marked this number, it now becomes valid!
+                this.checkWinCondition();
 
                 // Play TTS for player too
                 TTS.announceNumber(number);
@@ -484,14 +487,6 @@ const Game = {
 
             // Wait for Welcome message to process game state...
             this.showToast('Đang đăng ký vé với chủ xướng...', 'info');
-
-            // Generate ticket and show player screen
-            // MOVED: Ticket generation now happens on Host side
-            // this.generatePlayerTicket();
-
-            // this.hideJoinModal(); -> Moved to onWelcome
-            // this.showScreen('player-screen'); -> Moved to onWelcome
-            // this.showToast('Đã tham gia phòng!', 'success'); -> Moved to onWelcome
 
             // Clear URL params
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -552,7 +547,6 @@ const Game = {
             // Generate 3 rows
             for (let row = 0; row < 3; row++) {
                 const rowData = new Array(9).fill(null);
-                const usedNumbers = new Set(); // Track numbers used in this row
 
                 // Pick 5 random columns for this row to have numbers
                 const filledColumns = [];
@@ -630,7 +624,6 @@ const Game = {
             const player = this.players.get(playerId);
             player.ticket = ticket;
             console.log(`Updated ticket for player ${player.name || playerId}`);
-            // P2P.sendToast(playerId, 'Chủ xướng đã xác nhận vé mới'); // Optional feedback
         }
     },
 
@@ -714,6 +707,9 @@ const Game = {
         });
 
         this.elements.playerTicket.appendChild(sheet);
+
+        // Initial check in case of refresh/sync
+        this.checkWinCondition();
     },
 
     // Toggle mark on ticket number
@@ -743,48 +739,72 @@ const Game = {
             // Check rows in this ticket
             for (let r = 0; r < 3; r++) {
                 const rowNumbers = ticketData[r].filter(n => n !== null);
-                let markedCount = 0;
+
+                let rawMarkedCount = 0;  // Marks user clicked
+                let validMarkedCount = 0; // Marks that are ACTUALLY called
 
                 rowNumbers.forEach(n => {
-                    if (this.markedNumbers.has(`${t}-${n}`)) {
-                        markedCount++;
+                    const cell = document.querySelector(`[data-ticket-index="${t}"][data-number="${n}"]`);
+                    const isMarked = this.markedNumbers.has(`${t}-${n}`);
+                    const isCalled = this.calledNumbers.has(n);
+
+                    // Update visual state for invalid marks
+                    if (cell) {
+                        if (isMarked && !isCalled) {
+                            cell.classList.add('invalid-mark');
+                        } else {
+                            cell.classList.remove('invalid-mark');
+                        }
+                    }
+
+                    if (isMarked) {
+                        rawMarkedCount++;
+                        if (isCalled) {
+                            validMarkedCount++;
+                        }
                     }
                 });
 
                 // Get DOM row cells to apply visuals
-                // Since we don't have row containers, we query by data attributes
                 const rowCells = document.querySelectorAll(`[data-ticket-index="${t}"][data-row="${r}"]`);
 
-                // Reset Row State first (Cleaner fix)
+                // Reset Row State
                 rowCells.forEach(cell => {
                     cell.classList.remove('winning-row', 'waiting-row');
                 });
 
-                // Unique ID for this specific row
                 const rowId = `${t}-${r}`;
 
-                if (markedCount === 5) { // WIN (KINH)
+                // Win Condition: 5 VALID marks
+                if (validMarkedCount === 5) {
                     hasWin = true;
                     rowCells.forEach(cell => cell.classList.add('winning-row'));
-                    // Remove from waiting list if we win
-                    this.announcedRows.delete(rowId);
-                } else if (markedCount === 4) { // WAIT (ĐỢI)
+                    this.announcedRows.delete(rowId); // Reset waiting if won
+                }
+                // Wait Condition: 4 VALID marks
+                else if (validMarkedCount === 4) {
                     isWaiting = true;
                     rowCells.forEach(cell => cell.classList.add('waiting-row'));
 
-                    // Announce Wait ONLY if not already announced for this row
                     if (!this.announcedRows.has(rowId)) {
                         this.announceWaitState();
                         this.announcedRows.add(rowId);
                     }
-                } else {
-                    // If marks dropped below 4, remove from announced list so we can announce again if they come back
-                    this.announcedRows.delete(rowId);
                 }
+                // CLIENT-SIDE CHECK (ABUSE PREVENTION):
+                // Do NOT delete rowId from announcedRows in an 'else' block.
+                // This prevents users from toggling mark/unmark to spam the "Wait" announcement.
             }
         }
 
+        // Enable/Disable "Kinh" button based on strict validation
         this.elements.btnLoto.disabled = !hasWin;
+
+        // Optional: Update button text to guide user
+        if (!hasWin) {
+            this.elements.btnLoto.textContent = '🎉 KINH!';
+        }
+
         return hasWin;
     },
 
@@ -799,10 +819,18 @@ const Game = {
 
     // Claim win
     claimLoto() {
+        // STRICT CHECK: Ensure client-side validation passes first
         if (!this.checkWinCondition()) {
             this.showToast('Bạn chưa đủ điều kiện để Kinh!', 'error');
             return;
         }
+
+        // ANTI-SPAM: Throttle win claims (10 seconds)
+        if (this._lastClaimTime && Date.now() - this._lastClaimTime < 10000) {
+            this.showToast('Vui lòng đợi 10 giây trước khi Kinh lại!', 'warning');
+            return;
+        }
+        this._lastClaimTime = Date.now();
 
         // Send claim to Host
         if (P2P.hostConnection) {
@@ -941,9 +969,7 @@ const Game = {
         }
     },
 
-    // QR Scanner (basic implementation)
-    // QR Scanner (Real implementation with jsQR)
-    // QR Scanner (Real implementation with jsQR)
+    // QR Scanner
     async startQRScanner() {
         if (this.isScanning) return;
 
@@ -956,7 +982,6 @@ const Game = {
             });
 
             this.elements.qrVideo.srcObject = stream;
-            // Required to play the video for the canvas to capture frames
             this.elements.qrVideo.setAttribute('playsinline', true);
             this.elements.qrVideo.play();
 
@@ -994,8 +1019,6 @@ const Game = {
             });
 
             if (code) {
-                console.log("QR Code found:", code.data);
-                // Check if it's a URL with room code or just a code
                 let roomCode = code.data;
 
                 // If URL, extract 'room' param
@@ -1009,17 +1032,12 @@ const Game = {
 
                 // If code looks like our 6-char code
                 if (roomCode && roomCode.length === 6) {
-                    // STOP IMMEDIATELY
                     this.isScanning = false;
                     this.stopQRScanner();
-
-                    // Vibrate if supported
                     if (navigator.vibrate) navigator.vibrate(200);
 
                     this.elements.roomCodeInput.value = roomCode;
                     this.showToast(`Tìm thấy mã: ${roomCode}`, 'success');
-
-                    // Auto join
                     this.joinRoom(roomCode);
                     return;
                 }
@@ -1057,8 +1075,6 @@ const Game = {
             if (duplicate.classList.contains('exiting')) {
                 duplicate.classList.remove('exiting');
                 duplicate.classList.add('visible');
-                // Note: The exit timers/listeners in exitToast will check for 'exiting' class
-                // before removing, so removing the class here saves the element.
             }
 
             // Set new timeout
@@ -1086,7 +1102,6 @@ const Game = {
         toast.dataset.timeoutId = timeoutId;
     },
 
-    // Separate exit function to avoid race conditions
     exitToast(toast) {
         // Guard: already exiting or removed
         if (!toast.isConnected || toast.classList.contains('exiting')) return;
