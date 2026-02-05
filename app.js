@@ -430,6 +430,13 @@ const Game = {
             };
 
             P2P.onNumberDrawn = (number, text) => {
+                // Ensure game is marked started
+                if (!this.gameStarted) {
+                    this.gameStarted = true;
+                    this.elements.btnNewTicket.disabled = true;
+                    this.elements.btnNewTicket.textContent = '🔒 Đã khoá vé';
+                }
+
                 this.calledNumbers.add(number);
                 this.updateCurrentNumber(number);
                 this.markNumberCalled(number);
@@ -852,11 +859,18 @@ const Game = {
         this.calledNumbers = new Set(calledNumbers);
         this.gameStarted = gameStarted;
 
+        // Update UI Controls
+        if (this.gameStarted) {
+            this.elements.btnNewTicket.disabled = true;
+            this.elements.btnNewTicket.textContent = '🔒 Đã khoá vé';
+        } else {
+            this.elements.btnNewTicket.disabled = false;
+            this.elements.btnNewTicket.textContent = '🔄 Đổi vé';
+        }
+
         // Update grids
         calledNumbers.forEach(num => {
             this.markNumberCalled(num);
-            // DISABLED: Auto-marking for late joiners
-            // this.highlightTicketNumber(num);
         });
 
         this.checkWinCondition();
@@ -880,6 +894,10 @@ const Game = {
         this.elements.calledCount.textContent = '0';
         this.elements.playerCurrentNumber.querySelector('span').textContent = '?';
 
+        // Reset player controls
+        this.elements.btnNewTicket.disabled = false;
+        this.elements.btnNewTicket.textContent = '🔄 Đổi vé';
+
         if (P2P.isHost) {
             this.elements.btnDraw.disabled = false;
             P2P.broadcastReset();
@@ -887,8 +905,8 @@ const Game = {
     },
 
     // QR Scanner (basic implementation)
+    // QR Scanner (Real implementation with jsQR)
     async startQRScanner() {
-        // Toggle behavior: if already active, stop it
         if (this.elements.qrScannerContainer.classList.contains('active')) {
             this.stopQRScanner();
             return;
@@ -900,18 +918,69 @@ const Game = {
             });
 
             this.elements.qrVideo.srcObject = stream;
+            // Required to play the video for the canvas to capture frames
+            this.elements.qrVideo.setAttribute('playsinline', true);
             this.elements.qrVideo.play();
+
             this.elements.qrScannerContainer.classList.add('active');
             this.elements.btnStartScan.textContent = 'Đang quét...';
+            this.showToast('Đang tìm mã QR...', 'info');
 
-            // Note: Full QR scanning would need a library like jsQR
-            // For now, users can manually enter the code
-            this.showToast('Đặt mã QR vào khung hoặc nhập mã thủ công', 'info');
+            // Start scanning loop
+            requestAnimationFrame(() => this.scanQRCode());
 
         } catch (error) {
             console.error('Camera error:', error);
-            this.showToast('Không thể mở camera', 'error');
+            this.showToast('Không thể mở camera. Hãy đảm bảo bạn đã cấp quyền.', 'error');
         }
+    },
+
+    scanQRCode() {
+        if (!this.elements.qrScannerContainer.classList.contains('active')) return;
+
+        const video = this.elements.qrVideo;
+
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            // Create a temporary canvas to draw the video frame
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: "dontInvert",
+            });
+
+            if (code) {
+                console.log("QR Code found:", code.data);
+                // Check if it's a URL with room code or just a code
+                let roomCode = code.data;
+
+                // If URL, extract 'room' param
+                if (roomCode.includes('?room=')) {
+                    try {
+                        const url = new URL(roomCode);
+                        const p = url.searchParams.get('room');
+                        if (p) roomCode = p;
+                    } catch (e) { /* ignore */ }
+                }
+
+                // If code looks like our 6-char code
+                if (roomCode && roomCode.length === 6) {
+                    this.elements.roomCodeInput.value = roomCode;
+                    this.showToast(`Tìm thấy mã: ${roomCode}`, 'success');
+                    this.stopQRScanner();
+
+                    // Auto join after a brief moment
+                    setTimeout(() => this.joinRoom(), 500);
+                    return;
+                }
+            }
+        }
+
+        requestAnimationFrame(() => this.scanQRCode());
     },
 
     stopQRScanner() {

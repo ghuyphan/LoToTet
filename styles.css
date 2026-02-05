@@ -1529,7 +1529,11 @@ body {
     color: var(--text-primary);
     font-size: var(--font-size-sm);
     font-weight: 600;
-    white-space: nowrap;
+    white-space: normal;
+    /* Allow wrapping */
+    word-break: break-word;
+    max-width: 90vw;
+    /* Prevent screen overflow */
     box-shadow: var(--shadow-lg);
     /* Default state: hidden and offset to prevent FOUC */
     transform: translateY(30px);
