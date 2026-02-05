@@ -17,12 +17,17 @@ const P2P = {
     config: {
         debug: 1,
         config: {
+            // Disable trickle ICE for better compatibility (slower initial connection but more robust)
+            iceTransportPolicy: 'all',
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:global.stun.twilio.com:3478' }
+                { urls: 'stun:global.stun.twilio.com:3478' },
+                { urls: 'stun:stun.services.mozilla.com' },
+                { urls: 'stun:stun.voiparound.com:3478' },
+                { urls: 'stun:stun.voipstunt.com:3478' }
             ]
         }
     },
@@ -168,7 +173,7 @@ const P2P = {
                 if (state === 'failed' || state === 'disconnected') {
                     console.warn('[ICE] Connection failed. Likely a Firewall/NAT issue.');
                     if (window.Game) {
-                        Game.showToast(`Kết nối với ${name || 'người chơi'} không ổn định (Mạng khác nhau?)`, 'warning');
+                        Game.showToast(`Kết nối không ổn định. Hãy đảm bảo cả 2 thiết bị cùng dùng chung WiFi!`, 'warning');
                     }
                 }
             };

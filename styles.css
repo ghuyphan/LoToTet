@@ -89,6 +89,7 @@ body {
     min-height: 100dvh;
     /* Mobile viewport fix */
     overflow-x: hidden;
+    width: 100%;
 }
 
 /* Background Decorations - Soft floating shapes */
@@ -731,24 +732,41 @@ body {
 
 /* Responsive Number Ball */
 @media (max-width: 480px) {
+    .host-layout {
+        gap: var(--space-sm);
+    }
+
+    .current-number-section {
+        min-height: auto;
+        padding: var(--space-lg) var(--space-md);
+    }
+
     .number-ball-container {
-        width: 120px;
-        height: 120px;
+        width: 100px;
+        height: 100px;
+        margin-bottom: var(--space-sm);
     }
 
     .number-ball {
-        width: 100px;
-        height: 100px;
+        width: 90px;
+        height: 90px;
     }
 
     .number-ball span {
         font-size: var(--font-size-2xl);
     }
 
+    .number-text,
+    .rhyme-text {
+        margin-top: var(--space-sm);
+        font-size: var(--font-size-md);
+        min-height: 24px;
+    }
+
     /* Make QR code smaller on mobile */
     #qr-code canvas {
-        width: 180px !important;
-        height: 180px !important;
+        width: 160px !important;
+        height: 160px !important;
     }
 }
 
@@ -1582,24 +1600,39 @@ body {
     .host-layout {
         grid-template-columns: 1fr;
         gap: var(--space-md);
+        width: 100%;
+        max-width: 100%;
     }
 
     .host-main {
         order: 1;
+        width: 100%;
+        max-width: 100%;
     }
 
     .host-sidebar {
         order: 2;
         min-width: auto;
-        /* Reset min-width for mobile stacking */
         width: 100%;
+        max-width: 100%;
     }
 
     .current-number-section {
-        min-height: 250px;
-        padding: var(--space-lg);
+        min-height: auto;
+        padding: var(--space-lg) var(--space-md);
+        width: 100%;
+        max-width: 100%;
     }
+
+    .screen {
+        padding: var(--space-md) var(--space-sm);
+        padding-bottom: var(--space-xl);
+        overflow-x: hidden;
+        /* Force clip if anything still overflows */
+    }
+
 }
+
 
 @media (max-width: 480px) {
     :root {
