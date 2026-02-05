@@ -196,6 +196,10 @@ const P2P = {
     async initPlayer(roomCode, name, ticket) {
         this.isHost = false;
         this.roomCode = roomCode.toUpperCase();
+        this._reconnectAttempts = 0;
+        this._maxReconnectAttempts = 3;
+        this._playerName = name;
+        this._playerTicket = ticket;
 
         return new Promise((resolve, reject) => {
             // Create peer with random ID
@@ -203,43 +207,7 @@ const P2P = {
 
             this.peer.on('open', (id) => {
                 console.log('Player peer opened:', id);
-
-                // Connect to host with metadata (Name + Ticket)
-                const hostId = `loto-${this.roomCode}`;
-                this.hostConnection = this.peer.connect(hostId, {
-                    reliable: true,
-                    metadata: {
-                        name: name,
-                        ticket: ticket
-                    }
-                });
-
-                this.hostConnection.on('open', () => {
-                    console.log('Connected to host');
-                    if (this.onConnected) this.onConnected();
-                    resolve();
-                });
-
-                this.hostConnection.on('data', (data) => {
-                    this.handleMessage(data);
-                });
-
-                this.hostConnection.on('close', () => {
-                    console.log('Disconnected from host');
-                    if (this.onDisconnected) this.onDisconnected();
-                });
-
-                this.hostConnection.on('error', (err) => {
-                    console.error('Connection to host failed:', err);
-                    reject(err);
-                });
-
-                // Add timeout for connection
-                setTimeout(() => {
-                    if (!this.hostConnection.open) {
-                        reject(new Error('Connection timeout - room not found'));
-                    }
-                }, 10000);
+                this._connectToHost(resolve, reject);
             });
 
             this.peer.on('error', (err) => {
@@ -248,6 +216,70 @@ const P2P = {
                 reject(err);
             });
         });
+    },
+
+    // Internal method to connect to host (supports reconnection)
+    _connectToHost(resolve, reject) {
+        const hostId = `loto-${this.roomCode}`;
+        this.hostConnection = this.peer.connect(hostId, {
+            reliable: true,
+            metadata: {
+                name: this._playerName,
+                ticket: this._playerTicket
+            }
+        });
+
+        this.hostConnection.on('open', () => {
+            console.log('Connected to host');
+            this._reconnectAttempts = 0; // Reset on successful connection
+            if (this.onConnected) this.onConnected();
+            if (resolve) resolve();
+        });
+
+        this.hostConnection.on('data', (data) => {
+            this.handleMessage(data);
+        });
+
+        this.hostConnection.on('close', () => {
+            console.log('Disconnected from host');
+            this._attemptReconnect();
+        });
+
+        this.hostConnection.on('error', (err) => {
+            console.error('Connection to host failed:', err);
+            if (reject) reject(err);
+        });
+
+        // Add timeout for connection
+        setTimeout(() => {
+            if (this.hostConnection && !this.hostConnection.open) {
+                if (reject) reject(new Error('Connection timeout - room not found'));
+            }
+        }, 10000);
+    },
+
+    // Attempt to reconnect with exponential backoff
+    _attemptReconnect() {
+        if (this._reconnectAttempts >= this._maxReconnectAttempts) {
+            console.log('Max reconnection attempts reached');
+            if (this.onDisconnected) this.onDisconnected();
+            return;
+        }
+
+        this._reconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(2, this._reconnectAttempts - 1), 8000); // 1s, 2s, 4s (max 8s)
+
+        console.log(`Reconnection attempt ${this._reconnectAttempts}/${this._maxReconnectAttempts} in ${delay}ms`);
+
+        if (window.Game) {
+            Game.showToast(`Đang thử kết nối lại... (${this._reconnectAttempts}/${this._maxReconnectAttempts})`, 'info');
+        }
+
+        setTimeout(() => {
+            if (this.peer && !this.peer.destroyed) {
+                this._connectToHost(null, null);
+            }
+        }, delay);
     },
 
     // Handle incoming messages
@@ -276,8 +308,9 @@ const P2P = {
                 break;
 
             case 'winClaim':
-                if (this.onWinClaim && this.isHost) {
-                    this.onWinClaim(data.playerId, data.ticket);
+                if (this.onWinClaim && this.isHost && conn) {
+                    // Use conn.peer (authoritative) instead of data.playerId (client-sent, can be null)
+                    this.onWinClaim(conn.peer);
                 }
                 break;
 

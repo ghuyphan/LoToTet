@@ -375,14 +375,20 @@ const Game = {
 
     showJoinModal() {
         this.elements.joinModal.classList.add('active');
-        this.elements.roomCodeInput.focus();
 
-        // Check for room code in URL
+        // Check for room code in URL (from external QR scan)
         const urlParams = new URLSearchParams(window.location.search);
         const roomCode = urlParams.get('room');
         if (roomCode) {
+            // Pre-fill the room code but DON'T auto-join
+            // Let user enter their name first (Kahoot-style)
             this.elements.roomCodeInput.value = roomCode;
-            this.joinRoom();
+            this.elements.playerNameInput.focus(); // Focus on name input
+            this.showToast('Nhập tên của bạn rồi bấm Tham Gia!', 'info');
+        } else {
+            // No room code - auto-start camera for QR scanning
+            this.elements.roomCodeInput.focus();
+            this.startQRScanner();
         }
     },
 
@@ -448,6 +454,11 @@ const Game = {
                 this.showToast('Vé không hợp lệ! Hãy kiểm tra lại các số đã đánh.', 'error');
                 this.elements.btnLoto.disabled = false;
                 this.elements.btnLoto.textContent = '🎉 KINH!';
+                // Clear any pending verify timeout
+                if (this._verifyTimeout) {
+                    clearTimeout(this._verifyTimeout);
+                    this._verifyTimeout = null;
+                }
             };
 
             P2P.onNumberDrawn = (number, text) => {
@@ -455,7 +466,7 @@ const Game = {
                 if (!this.gameStarted) {
                     this.gameStarted = true;
                     this.elements.btnNewTicket.disabled = true;
-                    this.elements.btnNewTicket.textContent = '🔒 Đã khoá vé';
+                    this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-lock"></i> Đã khoá vé';
                 }
 
                 this.calledNumbers.add(number);
@@ -838,6 +849,15 @@ const Game = {
             this.elements.btnLoto.disabled = true;
             this.elements.btnLoto.textContent = '⏳ Đang kiểm vé...';
             P2P.claimWin(); // No payload needed, host knows my ticket
+
+            // Add timeout - reset button if no response in 15 seconds
+            this._verifyTimeout = setTimeout(() => {
+                if (this.elements.btnLoto.textContent === '⏳ Đang kiểm vé...') {
+                    this.showToast('Không nhận được phản hồi từ chủ xướng. Thử lại.', 'warning');
+                    this.elements.btnLoto.disabled = false;
+                    this.elements.btnLoto.textContent = '🎉 KINH!';
+                }
+            }, 15000);
         }
     },
 
@@ -926,10 +946,10 @@ const Game = {
         // Update UI Controls
         if (this.gameStarted) {
             this.elements.btnNewTicket.disabled = true;
-            this.elements.btnNewTicket.textContent = '🔒 Đã khoá vé';
+            this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-lock"></i> Đã khoá vé';
         } else {
             this.elements.btnNewTicket.disabled = false;
-            this.elements.btnNewTicket.textContent = '🔄 Đổi vé';
+            this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-rotate"></i> Đổi vé';
         }
 
         // Update grids
@@ -961,7 +981,7 @@ const Game = {
 
         // Reset player controls
         this.elements.btnNewTicket.disabled = false;
-        this.elements.btnNewTicket.textContent = '🔄 Đổi vé';
+        this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-rotate"></i> Đổi vé';
 
         if (P2P.isHost) {
             this.elements.btnDraw.disabled = false;
@@ -986,16 +1006,17 @@ const Game = {
             this.elements.qrVideo.play();
 
             this.elements.qrScannerContainer.classList.add('active');
-            this.elements.btnStartScan.textContent = 'Đang quét...';
+            this.elements.btnStartScan.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang quét...';
             this.elements.btnStartScan.disabled = true;
-            this.showToast('Đang tìm mã QR...', 'info');
 
             this.isScanning = true;
             requestAnimationFrame(() => this.scanQRCode());
 
         } catch (error) {
             console.error('Camera error:', error);
-            this.showToast('Không thể mở camera. Hãy đảm bảo bạn đã cấp quyền.', 'error');
+            // Don't show error toast on auto-start, just update button
+            this.elements.btnStartScan.innerHTML = '<i class="fa-solid fa-camera"></i> Bật Camera';
+            this.elements.btnStartScan.disabled = false;
             this.isScanning = false;
         }
     },
@@ -1056,7 +1077,7 @@ const Game = {
             this.elements.qrVideo.srcObject = null;
         }
         this.elements.qrScannerContainer.classList.remove('active');
-        this.elements.btnStartScan.textContent = 'Bật Camera';
+        this.elements.btnStartScan.innerHTML = '<i class="fa-solid fa-camera"></i> Bật Camera';
         this.elements.btnStartScan.disabled = false;
     },
 
@@ -1086,6 +1107,8 @@ const Game = {
         const toast = document.createElement('div');
         toast.className = `toast ${type} entering`;
         toast.textContent = message;
+        toast.setAttribute('role', 'alert');
+        toast.setAttribute('aria-live', 'polite');
 
         this.elements.toastContainer.appendChild(toast);
 

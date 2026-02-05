@@ -84,6 +84,36 @@
     }
 }
 
+/* =============================================
+   FONTAWESOME ICON STYLING
+   ============================================= */
+.btn-icon i,
+.draw-icon i {
+    font-size: 1.5em;
+}
+
+.btn-large .btn-icon i {
+    font-size: 2em;
+}
+
+.btn-small i {
+    margin-right: 0.25em;
+}
+
+h3 i {
+    margin-right: 0.35em;
+}
+
+.btn-icon-only i {
+    font-size: 1.25em;
+}
+
+.modal-close i {
+    font-size: 1.5em;
+}
+
+/* Toast notifications have role='alert' for screen reader accessibility */
+
 /* Reset & Base */
 *,
 *::before,
