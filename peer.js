@@ -82,7 +82,7 @@ const P2P = {
         const name = conn.metadata ? conn.metadata.name : null;
         const ticket = conn.metadata ? conn.metadata.ticket : null;
 
-        conn.on('open', () => {
+        const onOpen = () => {
             console.log('Connection opened with:', conn.peer);
             console.log('Metadata:', conn.metadata);
 
@@ -114,7 +114,14 @@ const P2P = {
             } else {
                 console.warn('Cannot send welcome: Game instance or PlayerData missing');
             }
-        });
+        };
+
+        if (conn.open) {
+            console.log('Connection already open, initializing immediately');
+            onOpen();
+        } else {
+            conn.on('open', onOpen);
+        }
 
         conn.on('data', (data) => {
             this.handleMessage(data, conn);
