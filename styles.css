@@ -400,25 +400,27 @@ body {
 .btn-primary {
     background: linear-gradient(135deg, var(--coral-primary) 0%, var(--coral-dark) 100%);
     color: var(--text-white);
-    box-shadow: var(--shadow-md), var(--shadow-glow-coral);
+    box-shadow: var(--shadow-md), var(--shadow-glow-coral), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .btn-primary:hover:not(:disabled) {
-    box-shadow: var(--shadow-lg), 0 12px 40px rgba(255, 107, 107, 0.45);
-    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg), 0 12px 40px rgba(255, 107, 107, 0.5);
+    transform: translateY(-4px) scale(1.02);
 }
 
 .btn-secondary {
-    background: var(--bg-card);
+    background: linear-gradient(135deg, #e8f5f3 0%, #d4ede8 100%);
     color: var(--text-primary);
-    border: 2px solid rgba(45, 52, 54, 0.1);
-    box-shadow: var(--shadow-sm);
+    border: 2px solid var(--teal-accent);
+    box-shadow: var(--shadow-sm), 0 4px 15px rgba(0, 206, 201, 0.15);
 }
 
 .btn-secondary:hover:not(:disabled) {
-    background: var(--bg-card-hover);
-    border-color: var(--coral-light);
-    box-shadow: var(--shadow-md);
+    background: linear-gradient(135deg, #d4ede8 0%, #b8e4dd 100%);
+    border-color: var(--teal-primary);
+    box-shadow: var(--shadow-md), 0 8px 25px rgba(0, 206, 201, 0.25);
+    transform: translateY(-4px) scale(1.02);
 }
 
 .btn-large {
@@ -485,20 +487,54 @@ body {
     width: 100%;
     padding: var(--space-lg) var(--space-xl);
     font-size: var(--font-size-xl);
-    background: linear-gradient(135deg, var(--gold-primary) 0%, var(--gold-dark) 100%);
-    color: var(--text-primary);
+    background: linear-gradient(135deg, #FFB347 0%, #FF8C00 50%, #FF6B00 100%);
+    color: var(--text-white);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md), var(--shadow-glow-gold);
+    box-shadow:
+        var(--shadow-md),
+        0 8px 32px rgba(255, 140, 0, 0.4),
+        inset 0 2px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -2px 4px rgba(0, 0, 0, 0.1);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    animation: drawButtonPulse 2s ease-in-out infinite;
+}
+
+@keyframes drawButtonPulse {
+
+    0%,
+    100% {
+        box-shadow:
+            var(--shadow-md),
+            0 8px 32px rgba(255, 140, 0, 0.4),
+            inset 0 2px 0 rgba(255, 255, 255, 0.3),
+            inset 0 -2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    50% {
+        box-shadow:
+            var(--shadow-lg),
+            0 12px 48px rgba(255, 140, 0, 0.6),
+            inset 0 2px 0 rgba(255, 255, 255, 0.3),
+            inset 0 -2px 4px rgba(0, 0, 0, 0.1);
+    }
 }
 
 .btn-draw:hover:not(:disabled) {
     transform: translateY(-4px) scale(1.02);
-    box-shadow: var(--shadow-xl), 0 16px 50px rgba(255, 179, 71, 0.5);
+    box-shadow:
+        var(--shadow-xl),
+        0 16px 60px rgba(255, 140, 0, 0.6),
+        inset 0 2px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -2px 4px rgba(0, 0, 0, 0.1);
+    animation: none;
 }
 
 .btn-draw:disabled {
     background: linear-gradient(135deg, #DFE6E9 0%, #B2BEC3 100%);
     box-shadow: var(--shadow-sm);
+    animation: none;
+    color: var(--text-muted);
+    text-shadow: none;
 }
 
 .draw-icon {
