@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lô Tô - Trò Chơi Số</title>
+    <meta name="description" content="Chơi Lô Tô trực tuyến với bạn bè - không cần server!">
+
+    <!-- External Dependencies -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Oswald:wght@500;700&family=Anton&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <!-- Decorative Background -->
+    <div class="bg-decoration">
+        <div class="lantern lantern-1"></div>
+        <div class="lantern lantern-2"></div>
+        <div class="sparkle sparkle-1"></div>
+        <div class="sparkle sparkle-2"></div>
+        <div class="sparkle sparkle-3"></div>
+    </div>
+
+    <!-- Main App Container -->
+    <div id="app">
+        <!-- Home Screen -->
+        <div id="home-screen" class="screen active">
+            <div class="home-content">
+                <div class="logo-container">
+                    <h1 class="logo">🎰 Lô Tô</h1>
+                    <p class="tagline">Trò chơi số may mắn</p>
+                </div>
+
+                <div class="home-buttons">
+                    <button id="btn-host" class="btn btn-primary btn-large">
+                        <span class="btn-icon">🎤</span>
+                        <span class="btn-text">Làm Chủ Xướng</span>
+                        <span class="btn-desc">Tạo phòng & xướng số</span>
+                    </button>
+
+                    <button id="btn-join" class="btn btn-secondary btn-large">
+                        <span class="btn-icon">🎫</span>
+                        <span class="btn-text">Tham Gia</span>
+                        <span class="btn-desc">Quét mã QR hoặc nhập mã</span>
+                    </button>
+                </div>
+
+                <div class="home-footer">
+                    <p>🌐 Chơi cùng mạng WiFi • Không cần đăng ký</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Host Screen -->
+        <div id="host-screen" class="screen">
+            <header class="game-header">
+                <button id="btn-back-host" class="btn-icon-only">←</button>
+                <h2>Chủ Xướng</h2>
+                <div class="player-count">
+                    <span id="player-count">0</span> người chơi
+                </div>
+            </header>
+
+            <div class="host-layout">
+                <!-- Left Column: Main Number Display -->
+                <div class="host-main">
+                    <!-- Current Number Display -->
+                    <div class="current-number-section glass-card">
+                        <div class="number-ball-container">
+                            <div class="number-ball" id="current-number">
+                                <span>?</span>
+                            </div>
+                        </div>
+                        <p class="rhyme-text" id="number-text">Bấm để bắt đầu</p>
+                    </div>
+
+                    <!-- Draw Button -->
+                    <button id="btn-draw" class="btn btn-draw" disabled>
+                        <span class="draw-icon">🎱</span>
+                        <span>Xướng Số</span>
+                    </button>
+
+                    <!-- TTS Controls -->
+                    <div class="tts-controls glass-card">
+                        <h3>🔊 Giọng Nói</h3>
+                        <div class="control-row">
+                            <label>Tốc độ:</label>
+                            <input type="range" id="tts-speed" min="0.5" max="1.5" step="0.1" value="0.9">
+                            <span id="speed-value">0.9x</span>
+                        </div>
+                        <div class="control-row">
+                            <label>Âm lượng:</label>
+                            <input type="range" id="tts-volume" min="0" max="1" step="0.1" value="1">
+                            <span id="volume-value">100%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Room Info & Called Numbers -->
+                <div class="host-sidebar">
+                    <!-- QR Code Section -->
+                    <div class="qr-section glass-card">
+                        <h3>Mã Phòng</h3>
+                        <div id="qr-code"></div>
+                        <div class="room-code">
+                            <span id="room-code-display">------</span>
+                            <button id="btn-copy-code" class="btn-small">📋</button>
+                        </div>
+                    </div>
+
+                    <!-- Called Numbers Grid -->
+                    <div class="called-numbers glass-card">
+                        <h3>Số Đã Xướng (<span id="called-count">0</span>/90)</h3>
+                        <div id="numbers-grid" class="numbers-grid">
+                            <!-- Numbers 1-90 will be generated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Player Screen -->
+        <div id="player-screen" class="screen">
+            <header class="game-header">
+                <button id="btn-back-player" class="btn-icon-only">←</button>
+                <h2>Người Chơi</h2>
+                <div class="connection-status" id="connection-status">
+                    <span class="status-dot"></span>
+                    <span>Đang kết nối...</span>
+                </div>
+            </header>
+
+            <div class="player-content">
+                <!-- Current Number Display (Received) -->
+                <div class="current-number-section small">
+                    <p class="label">Số vừa xướng:</p>
+                    <div class="number-ball" id="player-current-number">
+                        <span>?</span>
+                    </div>
+                    <p class="rhyme-text" id="player-number-text">Chờ chủ xướng...</p>
+                </div>
+
+                <!-- Player's Ticket -->
+                <div class="ticket-container glass-card">
+                    <div class="ticket-header">
+                        <h3>🎫 Vé Lô Tô Của Bạn</h3>
+                        <button id="btn-new-ticket" class="btn-small">🔄 Đổi vé</button>
+                    </div>
+                    <div id="player-ticket" class="loto-cards-container">
+                        <!-- Ticket cards will be generated here -->
+                    </div>
+                </div>
+
+                <!-- Lotto Button -->
+                <button id="btn-loto" class="btn btn-loto" disabled>
+                    🎉 KINH!
+                </button>
+
+                <!-- Called Numbers (Compact) -->
+                <div class="called-numbers-compact glass-card">
+                    <h3>Số Đã Xướng</h3>
+                    <div id="player-numbers-grid" class="numbers-grid small">
+                        <!-- Numbers will be shown here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Join Modal -->
+        <div id="join-modal" class="modal">
+            <div class="modal-content glass-card">
+                <button class="modal-close" id="btn-close-join">×</button>
+                <div class="modal-header">
+                    <h3>🎫 Tham Gia Phòng</h3>
+                    <p>Nhập mã phòng từ chủ xướng</p>
+                </div>
+
+                <div class="join-form">
+                    <div class="input-group">
+                        <label>Tên hiển thị (Tùy chọn)</label>
+                        <input type="text" id="player-name-input" placeholder="Nhập tên của bạn" maxlength="20">
+                    </div>
+                    <div class="input-group">
+                        <label>Mã Phòng</label>
+                        <input type="text" id="room-code-input" placeholder="ABCDEF" maxlength="6">
+                    </div>
+                    <button class="btn btn-primary" id="btn-join-room">
+                        <i class="fas fa-sign-in-alt"></i> Tham Gia
+                    </button>
+
+                    <div class="divider">
+                        <span>HOẶC</span>
+                    </div>
+
+                    <div id="qr-scanner-container">
+                        <video id="qr-video"></video>
+                    </div>
+
+                    <button class="btn btn-secondary" id="btn-start-scan">
+                        <i class="fas fa-camera"></i> Quét mã QR
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Win Modal -->
+        <div id="win-modal" class="modal">
+            <div class="modal-content glass-card win-content">
+                <div class="win-animation">
+                    <div class="confetti"></div>
+                    <h1>🎉 KINH RỒI! 🎉</h1>
+                    <p id="winner-name">Người chơi đã thắng!</p>
+                </div>
+                <button id="btn-close-win" class="btn btn-primary">Đóng</button>
+            </div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toast-container"></div>
+
+    </div>
+
+    <!-- Scripts -->
+    <script src="tts.js"></script>
+    <script src="peer.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
