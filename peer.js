@@ -135,6 +135,26 @@ const P2P = {
         });
 
         conn.on('error', (err) => {
+            console.error('Connection level error:', err);
+        });
+
+        // Deep Debugging: Monitor ICE state
+        if (conn.peerConnection) {
+            conn.peerConnection.oniceconnectionstatechange = () => {
+                console.log(`[ICE] Connection state change: ${conn.peerConnection.iceConnectionState}`);
+                if (conn.peerConnection.iceConnectionState === 'failed' || conn.peerConnection.iceConnectionState === 'disconnected') {
+                    console.warn('[ICE] Connection failed or disconnected. Check NAT/Firewall.');
+                }
+            };
+
+            conn.peerConnection.onconnectionstatechange = () => {
+                console.log(`[Peers] Connection state change: ${conn.peerConnection.connectionState}`);
+            };
+        } else {
+            console.warn('No underlying peerConnection found for debugging.');
+        }
+
+        conn.on('error', (err) => {
             console.error('Connection error:', err);
             this.connections.delete(conn.peer);
         });
