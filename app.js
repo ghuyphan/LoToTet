@@ -379,6 +379,13 @@ const Game = {
     hideJoinModal() {
         this.elements.joinModal.classList.remove('active');
         this.stopQRScanner();
+
+        // Clear room code from URL so refresh doesn't trigger modal again
+        const url = new URL(window.location);
+        if (url.searchParams.has('room')) {
+            url.searchParams.delete('room');
+            window.history.replaceState({}, document.title, url.pathname + url.search);
+        }
     },
 
     async joinRoom() {
@@ -464,7 +471,15 @@ const Game = {
 
         } catch (error) {
             console.error('Failed to join room:', error);
-            this.showToast('Không tìm thấy phòng. Kiểm tra lại mã.', 'error');
+
+            // Distinguish between errors
+            if (error.type === 'peer-unavailable') {
+                this.showToast('Mã phòng không tồn tại. Vui lòng kiểm tra lại.', 'error');
+            } else if (error.message && error.message.includes('timeout')) {
+                this.showToast('Kết nối quá thời gian. Có thể do tường lửa hoặc mạng khác nhau.', 'error');
+            } else {
+                this.showToast(`Lỗi kết nối: ${error.message || 'Không xác định'}`, 'error');
+            }
         }
     },
 
