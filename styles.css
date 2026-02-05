@@ -1177,6 +1177,22 @@ body {
     pointer-events: none;
 }
 
+/* INVALID MARK: Number marked by user but NOT YET called by host */
+.ticket-cell.invalid-mark::after {
+    border-color: #95a5a6;
+    /* Grey instead of Red */
+    opacity: 0.4;
+    /* Faint */
+    box-shadow: none;
+    transform: rotate(0deg);
+    /* No rotation to look 'official' yet */
+}
+
+/* Transitions for smooth visual updates */
+.ticket-cell::after {
+    transition: border-color 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
+}
+
 /* Winning Row - Highlight */
 .winning-row::before {
     content: '';
