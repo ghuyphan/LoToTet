@@ -49,12 +49,17 @@ const P2P = {
     },
 
     // Initialize as host
-    async initHost() {
+    async initHost(retryCount = 0) {
         this.isHost = true;
-        this.roomCode = this.generateRoomCode();
+        // If retrying, generate a new code. Otherwise use existing or generate new.
+        if (retryCount > 0 || !this.roomCode) {
+            this.roomCode = this.generateRoomCode();
+        }
 
         return new Promise((resolve, reject) => {
             // Create peer with room code as ID
+            // NOTE: To support 3G/4G or symmetric NATs, you need to add a TURN server here.
+            // e.g. { urls: 'turn:your-turn-server.com', username: '...', credential: '...' }
             this.peer = new Peer(`loto-${this.roomCode}`, this.config);
 
             this.peer.on('open', (id) => {
@@ -68,13 +73,26 @@ const P2P = {
 
             this.peer.on('error', (err) => {
                 console.error('Peer error:', err);
-                if (this.onError) this.onError(err);
-                reject(err);
+                if (err.type === 'unavailable-id') {
+                    // ID taken, retry with new code
+                    if (retryCount < 5) {
+                        console.log('Room code taken, retrying...');
+                        this.peer.destroy();
+                        this.initHost(retryCount + 1).then(resolve).catch(reject);
+                    } else {
+                        reject(new Error('Unable to generate unique room code. Please try again.'));
+                    }
+                } else {
+                    if (this.onError) this.onError(err);
+                    reject(err);
+                }
             });
 
             this.peer.on('disconnected', () => {
                 console.log('Peer disconnected, attempting reconnect...');
-                this.peer.reconnect();
+                if (this.peer && !this.peer.destroyed) {
+                    this.peer.reconnect();
+                }
             });
         });
     },
@@ -144,9 +162,14 @@ const P2P = {
         // Deep Debugging: Monitor ICE state
         if (conn.peerConnection) {
             conn.peerConnection.oniceconnectionstatechange = () => {
-                console.log(`[ICE] Connection state change: ${conn.peerConnection.iceConnectionState}`);
-                if (conn.peerConnection.iceConnectionState === 'failed' || conn.peerConnection.iceConnectionState === 'disconnected') {
-                    console.warn('[ICE] Connection failed or disconnected. Check NAT/Firewall.');
+                const state = conn.peerConnection.iceConnectionState;
+                console.log(`[ICE] Connection state change: ${state}`);
+
+                if (state === 'failed' || state === 'disconnected') {
+                    console.warn('[ICE] Connection failed. Likely a Firewall/NAT issue.');
+                    if (window.Game) {
+                        Game.showToast(`Kết nối với ${name || 'người chơi'} không ổn định (Mạng khác nhau?)`, 'warning');
+                    }
                 }
             };
 

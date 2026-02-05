@@ -475,8 +475,8 @@ const Game = {
             // Distinguish between errors
             if (error.type === 'peer-unavailable') {
                 this.showToast('Mã phòng không tồn tại. Vui lòng kiểm tra lại.', 'error');
-            } else if (error.message && error.message.includes('timeout')) {
-                this.showToast('Kết nối quá thời gian. Có thể do tường lửa hoặc mạng khác nhau.', 'error');
+            } else if (error.message && (error.message.includes('timeout') || error.message.includes('Could not connect'))) {
+                this.showToast('Không thể kết nối. Nếu dùng 3G/4G, hãy thử chuyển sang cùng WiFi.', 'error');
             } else {
                 this.showToast(`Lỗi kết nối: ${error.message || 'Không xác định'}`, 'error');
             }
