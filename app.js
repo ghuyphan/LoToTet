@@ -11,8 +11,7 @@ const Game = {
     gameStarted: false,
     playerTicket: null,
     markedNumbers: new Set(),
-    // NEW: Track rows that have already announced "Waiting" to prevent spam
-    announcedRows: new Set(),
+    announcedRows: new Set(), // Track rows that have already announced "Waiting"
 
     // Anti-spam timers
     _lastWaitAnnounce: 0,
@@ -22,6 +21,9 @@ const Game = {
     isDrawing: false, // Lock to prevent rapid draw clicks
     isJoining: false, // Lock to prevent multiple join attempts
     isScanning: false, // Control QR scanner loop
+    isMuted: false, // Player mute state
+    autoDrawEnabled: false, // Host auto-draw state
+    autoDrawTimer: null, // Auto-draw interval timer
 
     // DOM Elements cache
     elements: {},
@@ -34,8 +36,136 @@ const Game = {
         this.generateNumbersGrid('player-numbers-grid', true);
         this.resetRemainingNumbers();
         this.setupTTSControls();
+        this.setupBeforeUnload();
 
         console.log('Lô Tô game initialized');
+    },
+
+    // Setup beforeunload warning to prevent accidental exits
+    setupBeforeUnload() {
+        window.addEventListener('beforeunload', (e) => {
+            // Only warn if player is in an active game
+            if (!P2P.isHost && P2P.hostConnection && this.gameStarted) {
+                e.preventDefault();
+                // Modern browsers ignore custom messages, but we still need to set returnValue
+                e.returnValue = 'Bạn đang trong ván chơi. Bạn có chắc muốn thoát?';
+                return e.returnValue;
+            }
+        });
+    },
+
+    // Check for existing session and attempt to reconnect
+    async checkSessionAndReconnect() {
+        if (!P2P.hasRestoredSession()) return false;
+
+        const session = P2P.loadSession();
+        if (!session) return false;
+
+        this.showToast('Đang kết nối lại...', 'info');
+        console.log('[Session] Attempting to restore session:', session.roomCode);
+
+        try {
+            // Restore local state from session
+            this.playerTicket = session.playerTicket;
+            this.currentTheme = ['blue', 'green', 'red', 'purple', 'yellow'][Math.floor(Math.random() * 5)];
+            this.markedNumbers = new Set();
+            this.announcedRows.clear();
+            this.renderPlayerTicket();
+
+            // Setup P2P callbacks (same as joinRoom)
+            this._setupPlayerCallbacks();
+
+            // Attempt reconnection
+            await P2P.initPlayer(
+                session.roomCode,
+                session.playerName,
+                session.playerTicket,
+                true // isReconnect flag
+            );
+
+            this.showScreen('player-screen');
+            this.showToast('Đã kết nối lại thành công!', 'success');
+            return true;
+
+        } catch (error) {
+            console.error('[Session] Reconnection failed:', error);
+            P2P.clearSession();
+            this.showToast('Không thể kết nối lại. Vui lòng tham gia lại.', 'error');
+            return false;
+        }
+    },
+
+    // Setup P2P callbacks for player (extracted for reuse)
+    _setupPlayerCallbacks() {
+        P2P.onConnected = () => {
+            this.elements.connectionStatus.classList.add('connected');
+            this.elements.connectionStatus.classList.remove('disconnected');
+            this.elements.connectionStatus.querySelector('span:last-child').textContent = 'Đã kết nối';
+        };
+
+        P2P.onReconnecting = () => {
+            this.elements.connectionStatus.classList.remove('connected');
+            this.elements.connectionStatus.classList.add('disconnected');
+            this.elements.connectionStatus.querySelector('span:last-child').textContent = 'Đang kết nối lại...';
+            this.showToast('Mất kết nối, đang thử lại...', 'warning');
+        };
+
+        P2P.onReconnected = () => {
+            this.elements.connectionStatus.classList.add('connected');
+            this.elements.connectionStatus.classList.remove('disconnected');
+            this.elements.connectionStatus.querySelector('span:last-child').textContent = 'Đã kết nối';
+            this.showToast('Đã kết nối lại!', 'success');
+        };
+
+        P2P.onWelcome = (data) => {
+            this.playerTicket = data.ticket;
+            this.calledNumbers = new Set(data.gameState.calledNumbers);
+            this.gameStarted = data.gameState.gameStarted;
+
+            this.renderPlayerTicket();
+            this.syncState(this.calledNumbers, this.gameStarted);
+
+            this.hideJoinModal();
+            this.showScreen('player-screen');
+            this.showToast(`Chào mừng ${data.name || ''}!`, 'success');
+
+            // Save session after welcome
+            P2P.saveSession();
+        };
+
+        P2P.onDisconnected = () => {
+            this.elements.connectionStatus.classList.remove('connected');
+            this.elements.connectionStatus.classList.add('disconnected');
+            this.elements.connectionStatus.querySelector('span:last-child').textContent = 'Mất kết nối';
+            this.showToast('Mất kết nối với chủ xướng', 'error');
+        };
+
+        P2P.onWinRejected = () => {
+            this.showToast('Vé không hợp lệ! Hãy kiểm tra lại các số đã đánh.', 'error');
+            this.elements.btnLoto.disabled = false;
+            this.elements.btnLoto.textContent = '🎉 KINH!';
+            if (this._verifyTimeout) {
+                clearTimeout(this._verifyTimeout);
+                this._verifyTimeout = null;
+            }
+        };
+
+        P2P.onNumberDrawn = (number, text) => {
+            if (!this.gameStarted) {
+                this.gameStarted = true;
+                this.elements.btnNewTicket.disabled = true;
+                this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-lock"></i> Đã khoá vé';
+            }
+
+            this.calledNumbers.add(number);
+            this.updateCurrentNumber(number);
+            this.markNumberCalled(number);
+            this.checkWinCondition();
+            TTS.announceNumber(number);
+
+            // Update saved session with new game state
+            P2P.saveSession();
+        };
     },
 
     // Cache DOM elements
@@ -94,7 +224,15 @@ const Game = {
             toastContainer: document.getElementById('toast-container'),
 
             // New Input
-            playerNameInput: document.getElementById('player-name-input')
+            playerNameInput: document.getElementById('player-name-input'),
+
+            // Mute button (Player)
+            btnMute: document.getElementById('btn-mute'),
+
+            // Auto-draw (Host)
+            autoDrawToggle: document.getElementById('auto-draw-toggle'),
+            autoDrawInterval: document.getElementById('auto-draw-interval'),
+            autoDrawSpeedContainer: document.getElementById('auto-draw-speed-container')
         };
     },
 
@@ -135,6 +273,86 @@ const Game = {
         this.elements.winModal.addEventListener('click', (e) => {
             if (e.target === this.elements.winModal) this.hideWinModal();
         });
+
+        // Mute button (Player)
+        if (this.elements.btnMute) {
+            this.elements.btnMute.addEventListener('click', () => this.toggleMute());
+        }
+
+        // Auto-draw toggle (Host)
+        if (this.elements.autoDrawToggle) {
+            this.elements.autoDrawToggle.addEventListener('change', () => this.toggleAutoDraw());
+        }
+        if (this.elements.autoDrawInterval) {
+            this.elements.autoDrawInterval.addEventListener('change', () => {
+                // Restart auto-draw with new interval if it's currently running
+                if (this.autoDrawEnabled) {
+                    this.stopAutoDraw();
+                    this.startAutoDraw();
+                }
+            });
+        }
+    },
+
+    // Toggle mute for player (for playing in same room)
+    toggleMute() {
+        this.isMuted = !this.isMuted;
+
+        if (this.isMuted) {
+            TTS.setVolume(0);
+            this.elements.btnMute.classList.add('muted');
+            this.elements.btnMute.querySelector('i').className = 'fa-solid fa-volume-xmark';
+            this.showToast('Đã tắt âm thanh', 'info');
+        } else {
+            TTS.setVolume(1);
+            this.elements.btnMute.classList.remove('muted');
+            this.elements.btnMute.querySelector('i').className = 'fa-solid fa-volume-high';
+            this.showToast('Đã bật âm thanh', 'info');
+        }
+    },
+
+    // Toggle auto-draw for host
+    toggleAutoDraw() {
+        this.autoDrawEnabled = this.elements.autoDrawToggle.checked;
+
+        if (this.autoDrawEnabled) {
+            this.startAutoDraw();
+            this.elements.autoDrawSpeedContainer.style.display = 'flex';
+            this.showToast('Tự động xướng số đã bật', 'success');
+        } else {
+            this.stopAutoDraw();
+            this.elements.autoDrawSpeedContainer.style.display = 'none';
+            this.showToast('Tự động xướng số đã tắt', 'info');
+        }
+    },
+
+    // Start auto-draw timer
+    startAutoDraw() {
+        const interval = parseInt(this.elements.autoDrawInterval.value, 10);
+        this.elements.btnDraw.classList.add('auto-drawing');
+
+        // Draw immediately first, then start interval
+        this.drawNumber();
+
+        this.autoDrawTimer = setInterval(() => {
+            if (this.remainingNumbers.length > 0 && !this.isDrawing) {
+                this.drawNumber();
+            } else if (this.remainingNumbers.length === 0) {
+                this.stopAutoDraw();
+                this.elements.autoDrawToggle.checked = false;
+                this.showToast('Đã hết số!', 'info');
+            }
+        }, interval);
+    },
+
+    // Stop auto-draw timer
+    stopAutoDraw() {
+        if (this.autoDrawTimer) {
+            clearInterval(this.autoDrawTimer);
+            this.autoDrawTimer = null;
+        }
+        this.elements.btnDraw.classList.remove('auto-drawing');
+        this.autoDrawEnabled = false;
     },
 
     // Setup TTS controls
@@ -189,6 +407,13 @@ const Game = {
 
     // Go back to home
     goHome() {
+        // Stop auto-draw if active
+        if (this.autoDrawTimer) {
+            this.stopAutoDraw();
+            if (this.elements.autoDrawToggle) {
+                this.elements.autoDrawToggle.checked = false;
+            }
+        }
         P2P.disconnect();
         this.reset();
         this.players.clear();
@@ -380,13 +605,10 @@ const Game = {
         const urlParams = new URLSearchParams(window.location.search);
         const roomCode = urlParams.get('room');
         if (roomCode) {
-            // Pre-fill the room code but DON'T auto-join
-            // Let user enter their name first (Kahoot-style)
             this.elements.roomCodeInput.value = roomCode;
-            this.elements.playerNameInput.focus(); // Focus on name input
+            this.elements.playerNameInput.focus();
             this.showToast('Nhập tên của bạn rồi bấm Tham Gia!', 'info');
         } else {
-            // No room code - auto-start camera for QR scanning
             this.elements.roomCodeInput.focus();
             this.startQRScanner();
         }
@@ -396,7 +618,7 @@ const Game = {
         this.elements.joinModal.classList.remove('active');
         this.stopQRScanner();
 
-        // Clear room code from URL so refresh doesn't trigger modal again
+        // Clear room code from URL
         const url = new URL(window.location);
         if (url.searchParams.has('room')) {
             url.searchParams.delete('room');
@@ -407,7 +629,6 @@ const Game = {
     async joinRoom(code = null) {
         if (this.isJoining) return;
 
-        // Use provided code or get from input
         const roomCode = (code || this.elements.roomCodeInput.value).trim().toUpperCase();
 
         if (roomCode.length !== 6) {
@@ -421,91 +642,23 @@ const Game = {
             this.elements.btnJoinRoom.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang vào...';
             this.showToast('Đang kết nối...', 'info');
 
-            // Setup P2P callbacks
-            P2P.onConnected = () => {
-                this.elements.connectionStatus.classList.add('connected');
-                this.elements.connectionStatus.querySelector('span:last-child').textContent = 'Đã kết nối';
-            };
+            // Use shared callback setup
+            this._setupPlayerCallbacks();
 
-            P2P.onWelcome = (data) => {
-                this.playerTicket = data.ticket; // Host confirms the ticket (should be same)
-                this.calledNumbers = new Set(data.gameState.calledNumbers);
-                this.gameStarted = data.gameState.gameStarted;
-
-                // Re-render to be safe (ensure state matches Host)
-                this.renderPlayerTicket();
-
-                // Sync state
-                this.syncState(this.calledNumbers, this.gameStarted);
-
-                this.hideJoinModal();
-                this.showScreen('player-screen');
-                this.showToast(`Chào mừng ${data.name || ''}!`, 'success');
-            };
-
-            P2P.onDisconnected = () => {
-                this.elements.connectionStatus.classList.remove('connected');
-                this.elements.connectionStatus.classList.add('disconnected');
-                this.elements.connectionStatus.querySelector('span:last-child').textContent = 'Mất kết nối';
-                this.showToast('Mất kết nối với chủ xướng', 'error');
-            };
-
-            P2P.onWinRejected = () => {
-                this.showToast('Vé không hợp lệ! Hãy kiểm tra lại các số đã đánh.', 'error');
-                this.elements.btnLoto.disabled = false;
-                this.elements.btnLoto.textContent = '🎉 KINH!';
-                // Clear any pending verify timeout
-                if (this._verifyTimeout) {
-                    clearTimeout(this._verifyTimeout);
-                    this._verifyTimeout = null;
-                }
-            };
-
-            P2P.onNumberDrawn = (number, text) => {
-                // Ensure game is marked started
-                if (!this.gameStarted) {
-                    this.gameStarted = true;
-                    this.elements.btnNewTicket.disabled = true;
-                    this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-lock"></i> Đã khoá vé';
-                }
-
-                this.calledNumbers.add(number);
-                this.updateCurrentNumber(number);
-                this.markNumberCalled(number);
-
-                // CRITICAL: Re-check win condition immediately. 
-                // If the player had pre-marked this number, it now becomes valid!
-                this.checkWinCondition();
-
-                // Play TTS for player too
-                TTS.announceNumber(number);
-            };
-
-            // Connect to room
             const name = this.elements.playerNameInput.value.trim().substr(0, 20);
-
-            // Generate ticket locally first
             this.playerTicket = this.createSheetData();
-
-            // Render it immediately so user sees their sheet
             this.currentTheme = ['blue', 'green', 'red', 'purple', 'yellow'][Math.floor(Math.random() * 5)];
             this.markedNumbers.clear();
-            this.announcedRows.clear(); // Clear waiting state
+            this.announcedRows.clear();
             this.renderPlayerTicket();
 
-            // Connect and register ticket with Host
             await P2P.initPlayer(roomCode, name, this.playerTicket);
 
-            // Wait for Welcome message to process game state...
             this.showToast('Đang đăng ký vé với chủ xướng...', 'info');
-
-            // Clear URL params
             window.history.replaceState({}, document.title, window.location.pathname);
 
         } catch (error) {
             console.error('Failed to join room:', error);
-
-            // Distinguish between errors
             if (error.type === 'peer-unavailable') {
                 this.showToast('Mã phòng không tồn tại. Vui lòng kiểm tra lại.', 'error');
             } else if (error.message && (error.message.includes('timeout') || error.message.includes('Could not connect'))) {
@@ -520,142 +673,192 @@ const Game = {
         }
     },
 
-    // Generate raw ticket data (pure logic)
+    // =============================================
+    // AUTHENTIC LÔ TÔ TICKET GENERATOR
+    // =============================================
+
     createSheetData() {
-        // Standard lô tô ticket: 3 rows × 9 columns
-        // Each row has 5 numbers and 4 blanks
-        // Numbers in columns are grouped by tens (1-9, 10-19, etc.)
-
-        // Generate 3 independent tickets for one sheet
-        const sheet = [];
-
-        // Hardcoded column ranges for bulletproof accuracy
+        // Standard Column Ranges for Vietnamese Lô Tô (1-90)
+        // Col 0: 1-9, Col 1: 10-19, ... Col 8: 80-90
         const COL_RANGES = [
-            { start: 1, end: 9 },   // Col 0
-            { start: 10, end: 19 }, // Col 1
-            { start: 20, end: 29 }, // Col 2
-            { start: 30, end: 39 }, // Col 3
-            { start: 40, end: 49 }, // Col 4
-            { start: 50, end: 59 }, // Col 5
-            { start: 60, end: 69 }, // Col 6
-            { start: 70, end: 79 }, // Col 7
-            { start: 80, end: 90 }  // Col 8
+            { start: 1, end: 9 },   // Col 1
+            { start: 10, end: 19 }, // Col 2
+            { start: 20, end: 29 }, // Col 3
+            { start: 30, end: 39 }, // Col 4
+            { start: 40, end: 49 }, // Col 5
+            { start: 50, end: 59 }, // Col 6
+            { start: 60, end: 69 }, // Col 7
+            { start: 70, end: 79 }, // Col 8
+            { start: 80, end: 90 }  // Col 9 (Contains 11 numbers)
         ];
 
-        // Create SHARED column pools from ranges
-        const columnPools = COL_RANGES.map(range => {
-            const pool = [];
-            for (let n = range.start; n <= range.end; n++) {
-                pool.push(n);
-            }
-            this.shuffleArray(pool);
-            return pool;
-        });
+        const sheet = [];
 
+        // Generate 3 independent valid tickets.
         for (let t = 0; t < 3; t++) {
-            const ticket = [];
+            let ticket;
+            let isValid = false;
+            let attempts = 0;
 
-            // Generate 3 rows
-            for (let row = 0; row < 3; row++) {
-                const rowData = new Array(9).fill(null);
-
-                // Pick 5 random columns for this row to have numbers
-                const filledColumns = [];
-                // Simple strategy: try to fill
-                while (filledColumns.length < 5) {
-                    const col = Math.floor(Math.random() * 9);
-                    if (!filledColumns.includes(col) && columnPools[col].length > 0) {
-                        filledColumns.push(col);
-                    }
-                }
-
-                // Sort columns index to keep order
-                filledColumns.sort((a, b) => a - b);
-
-                // Fill in the numbers
-                filledColumns.forEach(col => {
-                    const num = columnPools[col].pop();
-                    rowData[col] = num;
-                });
-
-                ticket.push(rowData);
-            }
-
-            // Sort numbers in each column (standard Lô Tô rule)
-            for (let col = 0; col < 9; col++) {
-                const colNumbers = ticket.map(row => row[col]).filter(n => n !== null);
-                colNumbers.sort((a, b) => a - b);
-                let idx = 0;
-                for (let row = 0; row < 3; row++) {
-                    if (ticket[row][col] !== null) {
-                        ticket[row][col] = colNumbers[idx++];
-                    }
+            // Retry loop to ensure we generate a valid ticket layout
+            while (!isValid && attempts < 50) {
+                try {
+                    ticket = this.generateSingleTicket(COL_RANGES);
+                    isValid = true;
+                } catch (e) {
+                    attempts++;
                 }
             }
-
+            // Fallback (extremely rare)
+            if (!isValid) {
+                console.error("Failed to generate valid ticket, using fallback");
+                ticket = Array(3).fill(null).map(() => Array(9).fill(null));
+            }
             sheet.push(ticket);
         }
         return sheet;
     },
 
-    // Handle new player joining (Host Side)
-    handlePlayerJoin(playerId, name, ticket) {
-        // Validate ticket (basic check)
-        if (!ticket || !Array.isArray(ticket) || ticket.length !== 3) {
-            console.error('Invalid ticket from player', playerId);
-            // Fallback: Generate one for them if theirs is garbage
-            ticket = this.createSheetData();
+    generateSingleTicket(ranges) {
+        // Initialize 3 rows x 9 cols with null
+        let grid = Array(3).fill(null).map(() => Array(9).fill(null));
+        let colCounts = Array(9).fill(0);
+
+        // STEP 1: Ensure every column has at least 1 number
+        // We have 15 numbers total. 9 columns.
+        // Assign 1 slot to every column first.
+        for (let i = 0; i < 9; i++) {
+            colCounts[i]++;
         }
 
-        // Store player data with their provided ticket
+        // Distribute the remaining 6 numbers randomly across columns
+        // Max numbers per column is 3 (since there are 3 rows)
+        let extra = 6;
+        while (extra > 0) {
+            let col = Math.floor(Math.random() * 9);
+            if (colCounts[col] < 3) {
+                colCounts[col]++;
+                extra--;
+            }
+        }
+
+        // STEP 2: Assign numbers to Rows to ensure EXACTLY 5 numbers per row.
+        // This is a backtracking problem: Fit 'colCounts' into 3 rows of 5.
+        const layout = this.solveLayout(colCounts);
+        if (!layout) throw new Error("Could not solve layout");
+
+        // STEP 3: Fill the layout with actual random numbers
+        for (let c = 0; c < 9; c++) {
+            const count = colCounts[c];
+            const range = ranges[c];
+
+            // Create pool for this specific column
+            const pool = [];
+            for (let n = range.start; n <= range.end; n++) pool.push(n);
+            this.shuffleArray(pool);
+
+            // Pick 'count' numbers and SORT them (Standard Rule: Ascending)
+            const picks = pool.slice(0, count).sort((a, b) => a - b);
+
+            // Place them into the reserved slots in the grid
+            let pickIdx = 0;
+            for (let r = 0; r < 3; r++) {
+                if (layout[r][c] === 1) {
+                    grid[r][c] = picks[pickIdx++];
+                }
+            }
+        }
+
+        return grid;
+    },
+
+    // Backtracking solver to fit column counts into 3 rows of 5
+    solveLayout(colCounts) {
+        const rows = [0, 0, 0]; // Current fill count for each row (max 5)
+        const grid = Array(3).fill(null).map(() => Array(9).fill(0));
+
+        if (this.fillColumn(0, colCounts, rows, grid)) {
+            return grid;
+        }
+        return null;
+    },
+
+    fillColumn(colIdx, colCounts, rows, grid) {
+        if (colIdx === 9) {
+            // Success if all rows have exactly 5
+            return rows[0] === 5 && rows[1] === 5 && rows[2] === 5;
+        }
+
+        const count = colCounts[colIdx];
+
+        // Options for placing 'count' items in 3 rows
+        let options = [];
+        if (count === 3) options = [[1, 1, 1]];
+        else if (count === 2) options = [[1, 1, 0], [1, 0, 1], [0, 1, 1]];
+        else if (count === 1) options = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+        else options = [[0, 0, 0]];
+
+        this.shuffleArray(options); // Shuffle to keep tickets looking random
+
+        for (let opt of options) {
+            // Check if this option fits in the row limits (max 5 per row)
+            if (rows[0] + opt[0] <= 5 && rows[1] + opt[1] <= 5 && rows[2] + opt[2] <= 5) {
+                // Apply
+                rows[0] += opt[0];
+                rows[1] += opt[1];
+                rows[2] += opt[2];
+                grid[0][colIdx] = opt[0];
+                grid[1][colIdx] = opt[1];
+                grid[2][colIdx] = opt[2];
+
+                // Recurse
+                if (this.fillColumn(colIdx + 1, colCounts, rows, grid)) return true;
+
+                // Backtrack
+                rows[0] -= opt[0];
+                rows[1] -= opt[1];
+                rows[2] -= opt[2];
+            }
+        }
+        return false;
+    },
+
+    // Handle new player joining (Host Side)
+    handlePlayerJoin(playerId, name, ticket) {
+        if (!ticket || !Array.isArray(ticket) || ticket.length !== 3) {
+            ticket = this.createSheetData();
+        }
         this.players.set(playerId, {
             name: name,
             ticket: ticket,
             connected: true
         });
-
-        // Return data for welcome message
         return { ticket, name };
     },
 
     // Handle ticket update from player (Host Side)
     handleTicketUpdate(playerId, ticket) {
-        if (this.gameStarted) {
-            console.warn(`Player ${playerId} tried to change ticket after game start.`);
-            return;
-        }
-
+        if (this.gameStarted) return;
         if (this.players.has(playerId)) {
-            // Validate ticket (basic check)
-            if (!ticket || !Array.isArray(ticket) || ticket.length !== 3) {
-                console.error('Invalid updated ticket from player', playerId);
-                return;
-            }
-
+            if (!ticket || !Array.isArray(ticket) || ticket.length !== 3) return;
             const player = this.players.get(playerId);
             player.ticket = ticket;
-            console.log(`Updated ticket for player ${player.name || playerId}`);
         }
     },
 
-    // Generate player's lô tô ticket (Requested by User)
+    // Generate player's lô tô ticket
     generatePlayerTicket() {
         if (this.gameStarted) {
             this.showToast('Không thể đổi vé khi ván đấu đang diễn ra!', 'error');
             return;
         }
 
-        // Generate new ticket locally
         this.playerTicket = this.createSheetData();
-
-        // Random Theme
         this.currentTheme = ['blue', 'green', 'red', 'purple', 'yellow'][Math.floor(Math.random() * 5)];
-
         this.markedNumbers.clear();
-        this.announcedRows.clear(); // Clear waiting state
+        this.announcedRows.clear();
         this.renderPlayerTicket();
 
-        // Send update to Host
         if (window.P2P) {
             P2P.sendTicketUpdate(this.playerTicket);
             this.showToast('Đã đổi vé mới!', 'success');
@@ -666,31 +869,29 @@ const Game = {
     renderPlayerTicket() {
         this.elements.playerTicket.innerHTML = '';
 
-        // Create Sheet Container
         const sheet = document.createElement('div');
         sheet.className = `loto-sheet theme-${this.currentTheme}`;
 
-        // Sheet Header (Single Brand Header)
         const sheetHeader = document.createElement('div');
         sheetHeader.className = 'loto-sheet-header';
         sheetHeader.textContent = '★ TÂN TÂN - TỐT NHẤT ★';
         sheet.appendChild(sheetHeader);
 
-        // Render 3 tickets in the sheet
         this.playerTicket.forEach((ticketData, ticketIdx) => {
-            // Create a card (one of the 3 sections)
             const card = document.createElement('div');
             card.className = 'loto-card';
 
-            // Ticket grid
             const ticketGrid = document.createElement('div');
             ticketGrid.className = 'loto-ticket';
 
-            // Render rows/cols
             ticketData.forEach((row, rowIdx) => {
                 row.forEach((num, colIdx) => {
                     const cell = document.createElement('div');
                     cell.className = 'ticket-cell';
+
+                    // === FIX: Apply dataset to ALL cells (even empty ones) ===
+                    cell.dataset.ticketIndex = ticketIdx;
+                    cell.dataset.row = rowIdx;
 
                     if (num === null) {
                         cell.classList.add('empty');
@@ -698,10 +899,8 @@ const Game = {
                         const numSpan = document.createElement('span');
                         numSpan.textContent = num;
                         cell.appendChild(numSpan);
-                        // Store specific ticket index alongside row/num
-                        cell.dataset.ticketIndex = ticketIdx;
+
                         cell.dataset.number = num;
-                        cell.dataset.row = rowIdx;
 
                         if (this.markedNumbers.has(`${ticketIdx}-${num}`)) {
                             cell.classList.add('marked');
@@ -718,8 +917,6 @@ const Game = {
         });
 
         this.elements.playerTicket.appendChild(sheet);
-
-        // Initial check in case of refresh/sync
         this.checkWinCondition();
     },
 
@@ -743,23 +940,17 @@ const Game = {
         let hasWin = false;
         let isWaiting = false;
 
-        // Iterate through all 3 tickets
         for (let t = 0; t < 3; t++) {
             const ticketData = this.playerTicket[t];
-
-            // Check rows in this ticket
             for (let r = 0; r < 3; r++) {
                 const rowNumbers = ticketData[r].filter(n => n !== null);
-
-                let rawMarkedCount = 0;  // Marks user clicked
-                let validMarkedCount = 0; // Marks that are ACTUALLY called
+                let validMarkedCount = 0;
 
                 rowNumbers.forEach(n => {
                     const cell = document.querySelector(`[data-ticket-index="${t}"][data-number="${n}"]`);
                     const isMarked = this.markedNumbers.has(`${t}-${n}`);
                     const isCalled = this.calledNumbers.has(n);
 
-                    // Update visual state for invalid marks
                     if (cell) {
                         if (isMarked && !isCalled) {
                             cell.classList.add('invalid-mark');
@@ -768,89 +959,65 @@ const Game = {
                         }
                     }
 
-                    if (isMarked) {
-                        rawMarkedCount++;
-                        if (isCalled) {
-                            validMarkedCount++;
-                        }
+                    if (isMarked && isCalled) {
+                        validMarkedCount++;
                     }
                 });
 
-                // Get DOM row cells to apply visuals
+                // Get DOM row cells (includes empty ones now)
                 const rowCells = document.querySelectorAll(`[data-ticket-index="${t}"][data-row="${r}"]`);
-
-                // Reset Row State
                 rowCells.forEach(cell => {
                     cell.classList.remove('winning-row', 'waiting-row');
                 });
 
                 const rowId = `${t}-${r}`;
 
-                // Win Condition: 5 VALID marks
                 if (validMarkedCount === 5) {
                     hasWin = true;
                     rowCells.forEach(cell => cell.classList.add('winning-row'));
-                    this.announcedRows.delete(rowId); // Reset waiting if won
-                }
-                // Wait Condition: 4 VALID marks
-                else if (validMarkedCount === 4) {
+                    this.announcedRows.delete(rowId);
+                } else if (validMarkedCount === 4) {
                     isWaiting = true;
                     rowCells.forEach(cell => cell.classList.add('waiting-row'));
-
                     if (!this.announcedRows.has(rowId)) {
                         this.announceWaitState();
                         this.announcedRows.add(rowId);
                     }
                 }
-                // CLIENT-SIDE CHECK (ABUSE PREVENTION):
-                // Do NOT delete rowId from announcedRows in an 'else' block.
-                // This prevents users from toggling mark/unmark to spam the "Wait" announcement.
             }
         }
 
-        // Enable/Disable "Kinh" button based on strict validation
         this.elements.btnLoto.disabled = !hasWin;
-
-        // Optional: Update button text to guide user
-        if (!hasWin) {
-            this.elements.btnLoto.textContent = '🎉 KINH!';
-        }
+        if (!hasWin) this.elements.btnLoto.textContent = '🎉 KINH!';
 
         return hasWin;
     },
 
-    // Debounce wait announcement
     announceWaitState() {
         if (this._lastWaitAnnounce && Date.now() - this._lastWaitAnnounce < 5000) return;
         this._lastWaitAnnounce = Date.now();
-
         P2P.broadcastWait();
         this.showToast('Bạn đang Đợi!', 'info');
     },
 
-    // Claim win
     claimLoto() {
-        // STRICT CHECK: Ensure client-side validation passes first
         if (!this.checkWinCondition()) {
             this.showToast('Bạn chưa đủ điều kiện để Kinh!', 'error');
             return;
         }
 
-        // ANTI-SPAM: Throttle win claims (10 seconds)
         if (this._lastClaimTime && Date.now() - this._lastClaimTime < 10000) {
             this.showToast('Vui lòng đợi 10 giây trước khi Kinh lại!', 'warning');
             return;
         }
         this._lastClaimTime = Date.now();
 
-        // Send claim to Host
         if (P2P.hostConnection) {
             this.showToast('Đang gửi yêu cầu kiểm vé...', 'info');
             this.elements.btnLoto.disabled = true;
             this.elements.btnLoto.textContent = '⏳ Đang kiểm vé...';
-            P2P.claimWin(); // No payload needed, host knows my ticket
+            P2P.claimWin();
 
-            // Add timeout - reset button if no response in 15 seconds
             this._verifyTimeout = setTimeout(() => {
                 if (this.elements.btnLoto.textContent === '⏳ Đang kiểm vé...') {
                     this.showToast('Không nhận được phản hồi từ chủ xướng. Thử lại.', 'warning');
@@ -861,14 +1028,11 @@ const Game = {
         }
     },
 
-    // Verify Win (Host Side)
     verifyWin(playerId) {
         const player = this.players.get(playerId);
         if (!player || !player.ticket) return false;
 
         const sheetData = player.ticket;
-
-        // Check if any row in the sheet is fully called
         for (const ticket of sheetData) {
             for (const row of ticket) {
                 const rowNumbers = row.filter(n => n !== null);
@@ -879,14 +1043,8 @@ const Game = {
         return false;
     },
 
-    // Show win modal
     showWin(winnerName) {
-        // Prevent duplicate win effects (race condition fix)
-        // If modal is already active for this winner, do nothing
-        if (this.elements.winModal.classList.contains('active')) {
-            return;
-        }
-
+        if (this.elements.winModal.classList.contains('active')) return;
         this.elements.winnerName.textContent = `${winnerName} đã thắng!`;
         this.elements.winModal.classList.add('active');
         this.createConfetti();
@@ -897,7 +1055,6 @@ const Game = {
         this.elements.winModal.classList.remove('active');
     },
 
-    // Create confetti effect
     createConfetti() {
         const container = document.querySelector('.confetti');
         if (!container) return;
@@ -921,7 +1078,6 @@ const Game = {
             container.appendChild(piece);
         }
 
-        // Add confetti animation if not exists
         if (!document.getElementById('confetti-style')) {
             const style = document.createElement('style');
             style.id = 'confetti-style';
@@ -938,12 +1094,10 @@ const Game = {
         }
     },
 
-    // Sync game state (for late joiners)
     syncState(calledNumbers, gameStarted) {
         this.calledNumbers = new Set(calledNumbers);
         this.gameStarted = gameStarted;
 
-        // Update UI Controls
         if (this.gameStarted) {
             this.elements.btnNewTicket.disabled = true;
             this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-lock"></i> Đã khoá vé';
@@ -952,7 +1106,6 @@ const Game = {
             this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-rotate"></i> Đổi vé';
         }
 
-        // Update grids
         calledNumbers.forEach(num => {
             this.markNumberCalled(num);
         });
@@ -960,16 +1113,14 @@ const Game = {
         this.checkWinCondition();
     },
 
-    // Reset game
     reset() {
         this.calledNumbers.clear();
         this.markedNumbers.clear();
-        this.announcedRows.clear(); // Reset waiting rows
+        this.announcedRows.clear();
         this.resetRemainingNumbers();
         this.currentNumber = null;
         this.gameStarted = false;
 
-        // Reset UI
         document.querySelectorAll('.number-cell').forEach(cell => {
             cell.classList.remove('called');
         });
@@ -979,7 +1130,6 @@ const Game = {
         this.elements.calledCount.textContent = '0';
         this.elements.playerCurrentNumber.querySelector('span').textContent = '?';
 
-        // Reset player controls
         this.elements.btnNewTicket.disabled = false;
         this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-rotate"></i> Đổi vé';
 
@@ -989,11 +1139,8 @@ const Game = {
         }
     },
 
-    // QR Scanner
     async startQRScanner() {
         if (this.isScanning) return;
-
-        // Ensure clean state
         this.stopQRScanner();
 
         try {
@@ -1014,7 +1161,6 @@ const Game = {
 
         } catch (error) {
             console.error('Camera error:', error);
-            // Don't show error toast on auto-start, just update button
             this.elements.btnStartScan.innerHTML = '<i class="fa-solid fa-camera"></i> Bật Camera';
             this.elements.btnStartScan.disabled = false;
             this.isScanning = false;
@@ -1023,17 +1169,14 @@ const Game = {
 
     scanQRCode() {
         if (!this.isScanning) return;
-
         const video = this.elements.qrVideo;
 
         if (video.readyState === video.HAVE_ENOUGH_DATA) {
-            // Create a temporary canvas to draw the video frame
             const canvas = document.createElement('canvas');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const code = jsQR(imageData.data, imageData.width, imageData.height, {
                 inversionAttempts: "dontInvert",
@@ -1041,8 +1184,6 @@ const Game = {
 
             if (code) {
                 let roomCode = code.data;
-
-                // If URL, extract 'room' param
                 if (roomCode.includes('?room=')) {
                     try {
                         const url = new URL(roomCode);
@@ -1051,7 +1192,6 @@ const Game = {
                     } catch (e) { /* ignore */ }
                 }
 
-                // If code looks like our 6-char code
                 if (roomCode && roomCode.length === 6) {
                     this.isScanning = false;
                     this.stopQRScanner();
@@ -1081,24 +1221,19 @@ const Game = {
         this.elements.btnStartScan.disabled = false;
     },
 
-    // Toast notifications
     showToast(message, type = 'info') {
         const existingToasts = Array.from(this.elements.toastContainer.children);
-        // Check for any duplicate, including those currently exiting
         const duplicate = existingToasts.find(t => t.textContent === message);
 
         if (duplicate) {
-            // Cancel pending removal
             const oldTimeoutId = parseInt(duplicate.dataset.timeoutId, 10);
             if (oldTimeoutId) clearTimeout(oldTimeoutId);
 
-            // Resurrection logic: if exiting, bring it back
             if (duplicate.classList.contains('exiting')) {
                 duplicate.classList.remove('exiting');
                 duplicate.classList.add('visible');
             }
 
-            // Set new timeout
             const newTimeoutId = setTimeout(() => this.exitToast(duplicate), 3000);
             duplicate.dataset.timeoutId = newTimeoutId;
             return;
@@ -1112,7 +1247,6 @@ const Game = {
 
         this.elements.toastContainer.appendChild(toast);
 
-        // Remove entering class and add visible class after animation
         toast.addEventListener('animationend', () => {
             if (!toast.classList.contains('exiting')) {
                 toast.classList.remove('entering');
@@ -1120,23 +1254,19 @@ const Game = {
             }
         }, { once: true });
 
-        // Auto remove after delay
         const timeoutId = setTimeout(() => this.exitToast(toast), 3000);
         toast.dataset.timeoutId = timeoutId;
     },
 
     exitToast(toast) {
-        // Guard: already exiting or removed
         if (!toast.isConnected || toast.classList.contains('exiting')) return;
 
         toast.classList.remove('visible');
-        toast.classList.remove('entering'); // Ensure entering state is cleared
+        toast.classList.remove('entering');
         toast.classList.add('exiting');
 
-        // Handler that checks for the correct animation
         const handleAnimationEnd = (e) => {
             if (e.animationName === 'toastSlideOut') {
-                // Only remove if it is STILL exiting (was not resurrected)
                 if (toast.classList.contains('exiting')) {
                     toast.remove();
                 }
@@ -1146,7 +1276,6 @@ const Game = {
 
         toast.addEventListener('animationend', handleAnimationEnd);
 
-        // Fallback removal in case animation doesn't fire or is interrupted
         setTimeout(() => {
             if (toast.isConnected && toast.classList.contains('exiting')) {
                 toast.removeEventListener('animationend', handleAnimationEnd);
@@ -1156,15 +1285,19 @@ const Game = {
     }
 };
 
-// Initialize game when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     Game.init();
 
-    // Check for room code in URL (auto-join)
-    const urlParams = new URLSearchParams(window.location.search);
-    const roomCode = urlParams.get('room');
-    if (roomCode) {
-        Game.showJoinModal();
+    // Check for existing session to restore (e.g., after page refresh)
+    const hasSession = await Game.checkSessionAndReconnect();
+
+    // Only show join modal if no session was restored
+    if (!hasSession) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomCode = urlParams.get('room');
+        if (roomCode) {
+            Game.showJoinModal();
+        }
     }
 });
 window.Game = Game;

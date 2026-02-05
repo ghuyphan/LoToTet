@@ -32,6 +32,13 @@ const P2P = {
         }
     },
 
+    // Session Storage Key
+    SESSION_KEY: 'loto_session',
+
+    // Visibility state tracking
+    _isPageHidden: false,
+    _wasConnectedBeforeHidden: false,
+
     // Callbacks
     onPlayerJoin: null,
     onPlayerLeave: null,
@@ -39,10 +46,112 @@ const P2P = {
     onWinClaim: null,
     onConnected: null,
     onDisconnected: null,
-    onWelcome: null, // New callback
-    onTicketUpdate: null, // Host side callback
-    onWinRejected: null, // Client side callback
+    onWelcome: null,
+    onTicketUpdate: null,
+    onWinRejected: null,
     onError: null,
+    onReconnecting: null, // New: Called when attempting to reconnect
+    onReconnected: null,  // New: Called when successfully reconnected
+
+    // =============================================
+    // SESSION PERSISTENCE HELPERS
+    // =============================================
+
+    saveSession() {
+        if (this.isHost) return; // Only players need session persistence
+
+        const session = {
+            roomCode: this.roomCode,
+            playerName: this._playerName,
+            playerTicket: this._playerTicket,
+            peerId: this.peer ? this.peer.id : null,
+            timestamp: Date.now()
+        };
+
+        try {
+            sessionStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+            console.log('[Session] Saved:', session.roomCode);
+        } catch (e) {
+            console.warn('[Session] Failed to save:', e);
+        }
+    },
+
+    loadSession() {
+        try {
+            const data = sessionStorage.getItem(this.SESSION_KEY);
+            if (!data) return null;
+
+            const session = JSON.parse(data);
+
+            // Session expires after 1 hour
+            const ONE_HOUR = 60 * 60 * 1000;
+            if (Date.now() - session.timestamp > ONE_HOUR) {
+                this.clearSession();
+                return null;
+            }
+
+            console.log('[Session] Loaded:', session.roomCode);
+            return session;
+        } catch (e) {
+            console.warn('[Session] Failed to load:', e);
+            return null;
+        }
+    },
+
+    clearSession() {
+        try {
+            sessionStorage.removeItem(this.SESSION_KEY);
+            console.log('[Session] Cleared');
+        } catch (e) {
+            console.warn('[Session] Failed to clear:', e);
+        }
+    },
+
+    // Check if we have a valid session to restore
+    hasRestoredSession() {
+        const session = this.loadSession();
+        return session !== null && session.roomCode && session.playerTicket;
+    },
+
+    // =============================================
+    // VISIBILITY API HANDLING
+    // =============================================
+
+    initVisibilityHandler() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this._isPageHidden = true;
+                this._wasConnectedBeforeHidden = this.hostConnection && this.hostConnection.open;
+                console.log('[Visibility] Page hidden, was connected:', this._wasConnectedBeforeHidden);
+            } else {
+                this._isPageHidden = false;
+                console.log('[Visibility] Page visible');
+
+                // Check connection health after returning
+                if (this._wasConnectedBeforeHidden && !this.isHost) {
+                    setTimeout(() => this._checkConnectionHealth(), 500);
+                }
+            }
+        });
+    },
+
+    _checkConnectionHealth() {
+        if (!this.hostConnection || !this.hostConnection.open) {
+            console.log('[Visibility] Connection lost while hidden, attempting reconnect...');
+            if (this.onReconnecting) this.onReconnecting();
+            this._attemptReconnect();
+        } else {
+            console.log('[Visibility] Connection still healthy');
+            // Send a ping to verify connection is truly alive
+            try {
+                this.hostConnection.send({ type: 'ping' });
+            } catch (e) {
+                console.log('[Visibility] Ping failed, reconnecting...');
+                if (this.onReconnecting) this.onReconnecting();
+                this._attemptReconnect();
+            }
+        }
+    },
 
     // Generate a random 6-character room code
     generateRoomCode() {
@@ -193,15 +302,29 @@ const P2P = {
     },
 
     // Initialize as player (join a room)
-    async initPlayer(roomCode, name, ticket) {
+    async initPlayer(roomCode, name, ticket, isReconnect = false) {
         this.isHost = false;
         this.roomCode = roomCode.toUpperCase();
         this._reconnectAttempts = 0;
-        this._maxReconnectAttempts = 3;
+        this._maxReconnectAttempts = 5; // Increased from 3 for better resilience
         this._playerName = name;
         this._playerTicket = ticket;
+        this._isReconnect = isReconnect;
+
+        // Initialize visibility handler (only once)
+        if (!this._visibilityHandlerInit) {
+            this.initVisibilityHandler();
+            this._visibilityHandlerInit = true;
+        }
 
         return new Promise((resolve, reject) => {
+            // Reuse existing peer if still valid
+            if (this.peer && !this.peer.destroyed) {
+                console.log('Reusing existing peer:', this.peer.id);
+                this._connectToHost(resolve, reject);
+                return;
+            }
+
             // Create peer with random ID
             this.peer = new Peer(this.config);
 
@@ -215,24 +338,43 @@ const P2P = {
                 if (this.onError) this.onError(err);
                 reject(err);
             });
+
+            this.peer.on('disconnected', () => {
+                console.log('Peer disconnected from signaling server, attempting reconnect...');
+                if (this.peer && !this.peer.destroyed) {
+                    this.peer.reconnect();
+                }
+            });
         });
     },
 
     // Internal method to connect to host (supports reconnection)
     _connectToHost(resolve, reject) {
         const hostId = `loto-${this.roomCode}`;
+        const isReconnecting = this._reconnectAttempts > 0 || this._isReconnect;
+
         this.hostConnection = this.peer.connect(hostId, {
             reliable: true,
             metadata: {
                 name: this._playerName,
-                ticket: this._playerTicket
+                ticket: this._playerTicket,
+                isReconnect: isReconnecting // Tell host this is a returning player
             }
         });
 
         this.hostConnection.on('open', () => {
-            console.log('Connected to host');
+            console.log('Connected to host', isReconnecting ? '(reconnect)' : '(new)');
             this._reconnectAttempts = 0; // Reset on successful connection
-            if (this.onConnected) this.onConnected();
+            this._isReconnect = false;
+
+            // Save session for future reconnections
+            this.saveSession();
+
+            if (isReconnecting && this.onReconnected) {
+                this.onReconnected();
+            } else if (this.onConnected) {
+                this.onConnected();
+            }
             if (resolve) resolve();
         });
 
@@ -364,6 +506,18 @@ const P2P = {
                     Game.reset();
                 }
                 break;
+
+            case 'ping':
+                // Respond to ping with pong (for connection health checks)
+                if (conn && conn.open) {
+                    conn.send({ type: 'pong' });
+                }
+                break;
+
+            case 'pong':
+                // Connection is alive, nothing to do
+                console.log('[Ping] Pong received, connection healthy');
+                break;
         }
     },
 
@@ -458,7 +612,7 @@ const P2P = {
     },
 
     // Disconnect and cleanup
-    disconnect() {
+    disconnect(clearSessionData = true) {
         if (this.hostConnection) {
             this.hostConnection.close();
         }
@@ -476,6 +630,11 @@ const P2P = {
         this.hostConnection = null;
         this.isHost = false;
         this.roomCode = null;
+
+        // Clear session data (unless we're reconnecting)
+        if (clearSessionData) {
+            this.clearSession();
+        }
     }
 };
 window.P2P = P2P;

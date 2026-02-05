@@ -101,6 +101,27 @@
                         <span>Xướng Số</span>
                     </button>
 
+                    <!-- Auto-Draw Toggle -->
+                    <div class="auto-draw-controls glass-card">
+                        <div class="auto-draw-header">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="auto-draw-toggle">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="auto-draw-label">Tự động xướng</span>
+                        </div>
+                        <div class="auto-draw-speed" id="auto-draw-speed-container">
+                            <label>Mỗi:</label>
+                            <select id="auto-draw-interval">
+                                <option value="3000">3 giây</option>
+                                <option value="5000" selected>5 giây</option>
+                                <option value="8000">8 giây</option>
+                                <option value="10000">10 giây</option>
+                                <option value="15000">15 giây</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <!-- TTS Controls -->
                     <div class="tts-controls glass-card">
                         <h3><i class="fa-solid fa-volume-high"></i> Giọng Nói</h3>
@@ -147,23 +168,30 @@
                 <button id="btn-back-player" class="btn-icon-only" aria-label="Quay lại trang chủ"><i
                         class="fa-solid fa-arrow-left"></i></button>
                 <h2>Người Chơi</h2>
-                <div class="connection-status" id="connection-status">
-                    <span class="status-dot"></span>
-                    <span>Đang kết nối...</span>
+                <div class="header-controls">
+                    <button id="btn-mute" class="btn-icon-only" aria-label="Tắt/Bật âm thanh">
+                        <i class="fa-solid fa-volume-high"></i>
+                    </button>
+                    <div class="connection-status" id="connection-status">
+                        <span class="status-dot"></span>
+                        <span>Đang kết nối...</span>
+                    </div>
                 </div>
             </header>
 
-            <div class="player-content">
-                <!-- Current Number Display (Received) -->
-                <div class="current-number-section small">
+            <div class="player-layout">
+                <!-- Current Number Display (Received) - First on both mobile and desktop sidebar -->
+                <div class="current-number-section glass-card">
                     <p class="label">Số vừa xướng:</p>
-                    <div class="number-ball" id="player-current-number">
-                        <span>?</span>
+                    <div class="number-ball-container">
+                        <div class="number-ball" id="player-current-number">
+                            <span>?</span>
+                        </div>
                     </div>
                     <p class="rhyme-text" id="player-number-text">Chờ chủ xướng...</p>
                 </div>
 
-                <!-- Player's Ticket -->
+                <!-- Player's Ticket - Second on mobile, Left column on desktop -->
                 <div class="ticket-container glass-card">
                     <div class="ticket-header">
                         <h3><i class="fa-solid fa-ticket"></i> Vé Lô Tô Của Bạn</h3>
@@ -175,12 +203,12 @@
                     </div>
                 </div>
 
-                <!-- Lotto Button -->
+                <!-- Lotto Button - Third on mobile, Right column on desktop -->
                 <button id="btn-loto" class="btn btn-loto" disabled aria-label="Báo KINH khi hoàn thành một hàng">
                     🎉 KINH!
                 </button>
 
-                <!-- Called Numbers (Compact) -->
+                <!-- Called Numbers (Compact) - Last on mobile, Right column on desktop -->
                 <div class="called-numbers-compact glass-card">
                     <h3>Số Đã Xướng</h3>
                     <div id="player-numbers-grid" class="numbers-grid small">
