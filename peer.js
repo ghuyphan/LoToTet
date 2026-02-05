@@ -41,6 +41,7 @@ const P2P = {
     onDisconnected: null,
     onWelcome: null, // New callback
     onTicketUpdate: null, // Host side callback
+    onWinRejected: null, // Client side callback
     onError: null,
 
     // Generate a random 6-character room code
@@ -286,6 +287,12 @@ const P2P = {
                 }
                 break;
 
+            case 'winRejected':
+                if (this.onWinRejected) {
+                    this.onWinRejected();
+                }
+                break;
+
             case 'ticketUpdate':
                 if (this.onTicketUpdate && this.isHost) {
                     this.onTicketUpdate(conn.peer, data.ticket);
@@ -369,6 +376,16 @@ const P2P = {
                 conn.send(message);
             }
         });
+    },
+
+    // Reject win for a specific player (host only)
+    rejectWin(playerId) {
+        if (!this.isHost) return;
+
+        const conn = this.connections.get(playerId);
+        if (conn && conn.open) {
+            conn.send({ type: 'winRejected' });
+        }
     },
 
     // Send ticket update (player only)
