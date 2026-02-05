@@ -498,31 +498,32 @@ const Game = {
 
         // Generate 3 independent tickets for one sheet
         const sheet = [];
+
+        // Hardcoded column ranges for bulletproof accuracy
+        const COL_RANGES = [
+            { start: 1, end: 9 },   // Col 0
+            { start: 10, end: 19 }, // Col 1
+            { start: 20, end: 29 }, // Col 2
+            { start: 30, end: 39 }, // Col 3
+            { start: 40, end: 49 }, // Col 4
+            { start: 50, end: 59 }, // Col 5
+            { start: 60, end: 69 }, // Col 6
+            { start: 70, end: 79 }, // Col 7
+            { start: 80, end: 90 }  // Col 8
+        ];
+
+        // Create SHARED column pools from ranges
+        const columnPools = COL_RANGES.map(range => {
+            const pool = [];
+            for (let n = range.start; n <= range.end; n++) {
+                pool.push(n);
+            }
+            this.shuffleArray(pool);
+            return pool;
+        });
+
         for (let t = 0; t < 3; t++) {
             const ticket = [];
-
-            // Hardcoded column ranges for bulletproof accuracy
-            const COL_RANGES = [
-                { start: 1, end: 9 },   // Col 0
-                { start: 10, end: 19 }, // Col 1
-                { start: 20, end: 29 }, // Col 2
-                { start: 30, end: 39 }, // Col 3
-                { start: 40, end: 49 }, // Col 4
-                { start: 50, end: 59 }, // Col 5
-                { start: 60, end: 69 }, // Col 6
-                { start: 70, end: 79 }, // Col 7
-                { start: 80, end: 90 }  // Col 8
-            ];
-
-            // Create column pools from ranges
-            const columnPools = COL_RANGES.map(range => {
-                const pool = [];
-                for (let n = range.start; n <= range.end; n++) {
-                    pool.push(n);
-                }
-                this.shuffleArray(pool);
-                return pool;
-            });
 
             // Generate 3 rows
             for (let row = 0; row < 3; row++) {
