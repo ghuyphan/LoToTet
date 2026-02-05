@@ -11,6 +11,9 @@ const Game = {
     gameStarted: false,
     playerTicket: null,
     markedNumbers: new Set(),
+    // NEW: Track rows that have already announced "Waiting" to prevent spam
+    announcedRows: new Set(),
+
     // Game logic constraints
     isDrawing: false, // Lock to prevent rapid draw clicks
     isJoining: false, // Lock to prevent multiple join attempts
@@ -473,6 +476,7 @@ const Game = {
             // Render it immediately so user sees their sheet
             this.currentTheme = ['blue', 'green', 'red', 'purple', 'yellow'][Math.floor(Math.random() * 5)];
             this.markedNumbers.clear();
+            this.announcedRows.clear(); // Clear waiting state
             this.renderPlayerTicket();
 
             // Connect and register ticket with Host
@@ -644,6 +648,7 @@ const Game = {
         this.currentTheme = ['blue', 'green', 'red', 'purple', 'yellow'][Math.floor(Math.random() * 5)];
 
         this.markedNumbers.clear();
+        this.announcedRows.clear(); // Clear waiting state
         this.renderPlayerTicket();
 
         // Send update to Host
@@ -755,15 +760,26 @@ const Game = {
                     cell.classList.remove('winning-row', 'waiting-row');
                 });
 
+                // Unique ID for this specific row
+                const rowId = `${t}-${r}`;
+
                 if (markedCount === 5) { // WIN (KINH)
                     hasWin = true;
                     rowCells.forEach(cell => cell.classList.add('winning-row'));
+                    // Remove from waiting list if we win
+                    this.announcedRows.delete(rowId);
                 } else if (markedCount === 4) { // WAIT (ĐỢI)
                     isWaiting = true;
                     rowCells.forEach(cell => cell.classList.add('waiting-row'));
 
-                    // Announce Wait (Debounced to avoid spamming)
-                    this.announceWaitState();
+                    // Announce Wait ONLY if not already announced for this row
+                    if (!this.announcedRows.has(rowId)) {
+                        this.announceWaitState();
+                        this.announcedRows.add(rowId);
+                    }
+                } else {
+                    // If marks dropped below 4, remove from announced list so we can announce again if they come back
+                    this.announcedRows.delete(rowId);
                 }
             }
         }
@@ -900,6 +916,7 @@ const Game = {
     reset() {
         this.calledNumbers.clear();
         this.markedNumbers.clear();
+        this.announcedRows.clear(); // Reset waiting rows
         this.resetRemainingNumbers();
         this.currentNumber = null;
         this.gameStarted = false;
