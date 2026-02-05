@@ -679,7 +679,6 @@ const Game = {
 
     createSheetData() {
         // Standard Column Ranges for Vietnamese Lô Tô (1-90)
-        // Col 0: 1-9, Col 1: 10-19, ... Col 8: 80-90
         const COL_RANGES = [
             { start: 1, end: 9 },   // Col 1
             { start: 10, end: 19 }, // Col 2
@@ -689,24 +688,50 @@ const Game = {
             { start: 50, end: 59 }, // Col 6
             { start: 60, end: 69 }, // Col 7
             { start: 70, end: 79 }, // Col 8
-            { start: 80, end: 90 }  // Col 9 (Contains 11 numbers)
+            { start: 80, end: 90 }  // Col 9
         ];
+
+        // === SHARED POOL INITIALIZATION ===
+        // Create a pool of all available numbers for each column (1-90)
+        // We clone and shuffle this once per SHEET so tickets don't overlap.
+        const colPools = COL_RANGES.map(range => {
+            const pool = [];
+            for (let n = range.start; n <= range.end; n++) pool.push(n);
+            return this.shuffleArray(pool);
+        });
 
         const sheet = [];
 
-        // Generate 3 independent valid tickets.
+        // Generate 3 tickets using the SHARED pool
         for (let t = 0; t < 3; t++) {
             let ticket;
             let isValid = false;
             let attempts = 0;
 
-            // Retry loop to ensure we generate a valid ticket layout
+            // Retry loop (cloning the pool state for retries isn't perfect but simple retries usually work for layout)
+            // Note: If a retry fails after consuming numbers, we might run out. 
+            // Better strategy: Pass a COPY of the current pool state for the *attempt*, 
+            // and only commit the draw if successful. 
+            // However, implementing "commit" logic is complex. 
+            // Simplified approach: Since layout solving is separated from number drawing, 
+            // we can solve layout first, then draw numbers. `generateSingleTicket` does both.
+            // Let's modify `generateSingleTicket` to take the pool.
+
             while (!isValid && attempts < 50) {
                 try {
-                    ticket = this.generateSingleTicket(COL_RANGES);
+                    // Critical: We must rely on the function to modify the pool IN PLACE 
+                    // only if it succeeds. But `generateSingleTicket` throws if it fails layout.
+                    // To avoid losing numbers on failed layout attempts, we pass a momentary clone?
+                    // Actually, `solveLayout` (step 2) is the one that fails. 
+                    // Step 3 (drawing numbers) happens AFTER layout is solved.
+                    // So it is safe to pass the real pool. The pool is only touched in Step 3.
+
+                    ticket = this.generateSingleTicket(COL_RANGES, colPools);
                     isValid = true;
                 } catch (e) {
                     attempts++;
+                    // If it failed in Step 2 (layout), pool wasn't touched. Retry is safe.
+                    // If it failed in Step 3? current code doesn't throw in step 3.
                 }
             }
             // Fallback (extremely rare)
@@ -719,7 +744,7 @@ const Game = {
         return sheet;
     },
 
-    generateSingleTicket(ranges) {
+    generateSingleTicket(ranges, colPools = null) {
         // Initialize 3 rows x 9 cols with null
         let grid = Array(3).fill(null).map(() => Array(9).fill(null));
         let colCounts = Array(9).fill(0);
@@ -736,7 +761,11 @@ const Game = {
         let extra = 6;
         while (extra > 0) {
             let col = Math.floor(Math.random() * 9);
-            if (colCounts[col] < 3) {
+            // Check if pool has enough numbers (if pool is provided)
+            const poolSize = colPools ? colPools[col].length : 999;
+
+            // Constraint: Max 3 per col AND we must have enough numbers left in pool
+            if (colCounts[col] < 3 && colCounts[col] < poolSize) {
                 colCounts[col]++;
                 extra--;
             }
@@ -750,15 +779,23 @@ const Game = {
         // STEP 3: Fill the layout with actual random numbers
         for (let c = 0; c < 9; c++) {
             const count = colCounts[c];
-            const range = ranges[c];
 
-            // Create pool for this specific column
-            const pool = [];
-            for (let n = range.start; n <= range.end; n++) pool.push(n);
-            this.shuffleArray(pool);
+            let picks;
+            if (colPools) {
+                // Use the shared pool!
+                // We MUST splice to remove them from future availability
+                picks = colPools[c].splice(0, count);
+            } else {
+                // Legacy / Fallback independent mode
+                const range = ranges[c];
+                const pool = [];
+                for (let n = range.start; n <= range.end; n++) pool.push(n);
+                this.shuffleArray(pool);
+                picks = pool.slice(0, count);
+            }
 
-            // Pick 'count' numbers and SORT them (Standard Rule: Ascending)
-            const picks = pool.slice(0, count).sort((a, b) => a - b);
+            // Sort them (Standard Rule: Ascending)
+            picks.sort((a, b) => a - b);
 
             // Place them into the reserved slots in the grid
             let pickIdx = 0;
