@@ -598,6 +598,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
+    min-width: 300px;
+    /* Ensure enough width for larger QR */
 }
 
 /* QR Section */
@@ -627,8 +629,10 @@ body {
     background: white;
     padding: var(--space-xs);
     box-shadow: var(--shadow-sm);
-    width: 140px !important;
-    height: 140px !important;
+    width: 250px !important;
+    height: 250px !important;
+    max-width: 100%;
+    height: auto !important;
 }
 
 .room-code {

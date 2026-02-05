@@ -256,7 +256,7 @@ const Game = {
         const url = `${window.location.href}?room=${roomCode}`;
 
         QRCode.toCanvas(url, {
-            width: 180,
+            width: 250,
             margin: 2,
             color: {
                 dark: '#1A0A0A',
