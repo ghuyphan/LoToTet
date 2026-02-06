@@ -1221,8 +1221,15 @@ const Game = {
         this.elements.playerTicket.className = 'loto-carousel';
 
         this.playerSheets.forEach((sheetData, sheetIdx) => {
+            // Determine Theme for this Sheet
+            const themes = ['blue', 'green', 'red', 'purple', 'yellow'];
+            let baseParams = themes.indexOf(this.currentTheme);
+            if (baseParams === -1) baseParams = 0;
+            // Cycle through themes starting from baseTheme
+            const sheetTheme = themes[(baseParams + sheetIdx) % themes.length];
+
             const sheetWrapper = document.createElement('div');
-            sheetWrapper.className = 'loto-sheet-wrapper';
+            sheetWrapper.className = `loto-sheet-wrapper theme-${sheetTheme}`;
 
             // Sheet Header with Remove Button
             const sheetHeader = document.createElement('div');
@@ -1252,15 +1259,8 @@ const Game = {
 
             sheetWrapper.appendChild(sheetHeader);
 
-            // Determine Theme for this Sheet
-            const themes = ['blue', 'green', 'red', 'purple', 'yellow'];
-            let baseParams = themes.indexOf(this.currentTheme);
-            if (baseParams === -1) baseParams = 0;
-            // Cycle through themes starting from baseTheme
-            const sheetTheme = themes[(baseParams + sheetIdx) % themes.length];
-
             const sheetDiv = document.createElement('div');
-            sheetDiv.className = `loto-sheet theme-${sheetTheme}`;
+            sheetDiv.className = 'loto-sheet';
 
             sheetData.forEach((ticketData, ticketIdx) => {
                 const card = document.createElement('div');

@@ -1182,6 +1182,10 @@ body {
     border-radius: var(--radius-lg);
     padding: var(--space-lg);
     box-shadow: var(--shadow-md);
+    min-width: 0;
+    /* CRITICAL: Allows grid item to shrink/respect column width */
+    overflow: hidden;
+    /* Safety measure */
 }
 
 .ticket-header {
@@ -1228,7 +1232,29 @@ body {
     justify-content: space-between;
     align-items: center;
     margin-bottom: var(--space-sm);
-    padding: 0 var(--space-xs);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--theme-color, var(--bg-secondary));
+    color: var(--theme-color, var(--text-secondary)) !important;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    /* Only colored if theme is present */
+}
+
+.sheet-header[style*="justify-content: center"] .sheet-title {
+    width: 100%;
+    text-align: center;
+}
+
+.loto-sheet-wrapper[class*="theme-"] .sheet-header {
+    background: var(--theme-color);
+    color: white !important;
+}
+
+.loto-sheet-wrapper[class*="theme-"] .sheet-title {
+    color: white;
+}
+
+.loto-sheet-wrapper[class*="theme-"] .btn-remove-sheet {
+    color: rgba(255, 255, 255, 0.8);
 }
 
 .sheet-title {
@@ -1313,15 +1339,16 @@ body {
     }
 
     .loto-sheet {
-        max-width: none;
         width: 100%;
+        max-width: 500px;
+        /* Constrain width on desktop to prevent excessive height */
     }
 
     .ticket-cell {
         font-size: 28px;
     }
 
-    .loto-sheet-header {
+    .sheet-header {
         font-size: 18px;
         padding: 8px 0;
     }
@@ -1368,27 +1395,27 @@ body {
 }
 
 /* THEME COLORS via Variables */
-.loto-sheet.theme-blue {
+.theme-blue {
     --theme-color: #0056b3;
     --theme-bg: #e6f2ff;
 }
 
-.loto-sheet.theme-green {
+.theme-green {
     --theme-color: #008040;
     --theme-bg: #e6ffef;
 }
 
-.loto-sheet.theme-red {
+.theme-red {
     --theme-color: #d63031;
     --theme-bg: #ffe6e6;
 }
 
-.loto-sheet.theme-purple {
+.theme-purple {
     --theme-color: #6c5ce7;
     --theme-bg: #f3e6ff;
 }
 
-.loto-sheet.theme-yellow {
+.theme-yellow {
     --theme-color: #d35400;
     --theme-bg: #fff5e6;
 }
@@ -1401,7 +1428,7 @@ body {
     background-color: var(--theme-bg);
 }
 
-.loto-sheet-header {
+.sheet-header-styled {
     background: var(--theme-color);
     color: white;
     /* Always white text on colored header */
