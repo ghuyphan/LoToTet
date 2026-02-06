@@ -610,7 +610,8 @@ const Game = {
             this.showToast('Nhập tên của bạn rồi bấm Tham Gia!', 'info');
         } else {
             this.elements.roomCodeInput.focus();
-            this.startQRScanner();
+            // Removed auto-start of scanner
+            // this.startQRScanner(); 
         }
     },
 
@@ -1235,8 +1236,10 @@ const Game = {
                     if (navigator.vibrate) navigator.vibrate(200);
 
                     this.elements.roomCodeInput.value = roomCode;
-                    this.showToast(`Tìm thấy mã: ${roomCode}`, 'success');
-                    this.joinRoom(roomCode);
+                    this.showToast(`Đã quét mã: ${roomCode}. Hãy nhập tên và Tham Gia!`, 'success');
+
+                    // Don't auto join, let user enter name
+                    this.elements.playerNameInput.focus();
                     return;
                 }
             }
