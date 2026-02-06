@@ -13,6 +13,7 @@ const Game = {
     markedNumbers: new Set(),
     announcedRows: new Set(), // Track rows that have already announced "Waiting"
     waitingPlayers: new Set(), // Track players currently waiting (cờ)
+    playerSheets: [], // Array of sheets (each sheet is an array of 3 tickets)
 
     // Anti-spam timers
     _lastWaitAnnounce: 0,
@@ -70,7 +71,8 @@ const Game = {
 
         try {
             // Restore local state from session
-            this.playerTicket = session.playerTicket;
+            this.playerSheets = session.playerSheets || (session.playerTicket ? [session.playerTicket] : []);
+            this.playerTicket = null; // Deprecated
             this.currentTheme = ['blue', 'green', 'red', 'purple', 'yellow'][Math.floor(Math.random() * 5)];
             this.markedNumbers = new Set();
             this.announcedRows.clear();
@@ -83,7 +85,9 @@ const Game = {
             await P2P.initPlayer(
                 session.roomCode,
                 session.playerName,
-                session.playerTicket,
+                session.roomCode,
+                session.playerName,
+                this.playerSheets, // Send all sheets
                 true // isReconnect flag
             );
 
@@ -122,7 +126,29 @@ const Game = {
         };
 
         P2P.onWelcome = (data) => {
-            this.playerTicket = data.ticket;
+            // Handle legacy single ticket or new multiple sheets
+            if (data.sheets) {
+                this.playerSheets = data.sheets;
+            } else if (data.ticket) {
+                this.playerSheets = [data.ticket];
+            }
+
+            // Safety check: Ensure playerSheets is always an array
+            if (!this.playerSheets) {
+                this.playerSheets = [];
+                // If we have no sheets from host, maybe we keep our local one?
+                // But welcome means "This is your state". If server has nothing, we have nothing.
+                // UNLESS it's a new join, where we sent our sheet?
+                // If we sent a sheet in join, host *should* return it.
+                // If host returns null, it means something went wrong or we are new.
+                // If we are new, we should generate one?
+                // Let's defer generation to explicit user action or keep what we have if we just generated it?
+                // The issue is P2P.onWelcome might be called when we HAVE a local sheet (from joinRoom).
+                // If we overwrite it with [] we lose it.
+                // But the log shows ticket: null.
+            }
+
+            // this.playerTicket = data.ticket; // Deprecated
             this.calledNumbers = new Set(data.gameState.calledNumbers);
             this.gameStarted = data.gameState.gameStarted;
 
@@ -158,7 +184,9 @@ const Game = {
             if (!this.gameStarted) {
                 this.gameStarted = true;
                 this.elements.btnNewTicket.disabled = true;
-                this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-lock"></i> Đã khoá vé';
+                this.elements.btnNewTicket.title = "Đã khoá vé (Ván đang chơi)";
+                this.elements.btnAddSheet.disabled = true;
+                this.elements.btnAddSheet.title = "Không thể thêm tờ khi đang chơi";
             }
 
             this.calledNumbers.add(number);
@@ -211,7 +239,9 @@ const Game = {
             connectionStatus: document.getElementById('connection-status'),
             playerCurrentNumber: document.getElementById('player-current-number'),
             playerTicket: document.getElementById('player-ticket'),
-            btnNewTicket: document.getElementById('btn-new-ticket'),
+            btnNewTicket: document.getElementById('btn-new-ticket'), // Renamed to "Reset" conceptually but ID kept
+            btnAddSheet: document.getElementById('btn-add-sheet'), // NEW
+            paginationDots: document.getElementById('pagination-dots'), // NEW
             btnLoto: document.getElementById('btn-loto'),
             playerNumbersGrid: document.getElementById('player-numbers-grid'),
 
@@ -281,6 +311,9 @@ const Game = {
         // Player screen
         this.elements.btnBackPlayer.addEventListener('click', () => this.goHome());
         this.elements.btnNewTicket.addEventListener('click', () => this.generatePlayerTicket());
+        if (this.elements.btnAddSheet) {
+            this.elements.btnAddSheet.addEventListener('click', () => this.addSheet(true));
+        }
         this.elements.btnLoto.addEventListener('click', () => this.claimLoto());
 
         // Join modal
@@ -635,7 +668,7 @@ const Game = {
             };
 
             P2P.onEmote = (emoji, senderId) => {
-                this.renderEmote(emoji);
+                // this.renderEmote(emoji); // Disabled on host screen
                 // Host broadcast is handled in PeerJS layer automatically
             };
 
@@ -840,13 +873,13 @@ const Game = {
             this._setupPlayerCallbacks();
 
             const name = this.elements.playerNameInput.value.trim().substr(0, 20);
-            this.playerTicket = this.createSheetData();
+            this.playerSheets = [this.createSheetData()];
             this.currentTheme = ['blue', 'green', 'red', 'purple', 'yellow'][Math.floor(Math.random() * 5)];
             this.markedNumbers.clear();
             this.announcedRows.clear();
             this.renderPlayerTicket();
 
-            await P2P.initPlayer(roomCode, name, this.playerTicket);
+            await P2P.initPlayer(roomCode, name, this.playerSheets);
 
             this.showToast('Đang đăng ký vé với chủ xướng...', 'info');
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -1055,105 +1088,270 @@ const Game = {
     },
 
     // Handle new player joining (Host Side)
-    handlePlayerJoin(playerId, name, ticket) {
-        if (!ticket || !Array.isArray(ticket) || ticket.length !== 3) {
-            ticket = this.createSheetData();
+    handlePlayerJoin(playerId, name, data) {
+        // Handle both legacy (ticket) and new (sheets) formats
+        let sheets = [];
+        if (data && Array.isArray(data) && data.length > 0 && Array.isArray(data[0]) && Array.isArray(data[0][0])) {
+            // It's likely a sheet array (Array of Array of Array)
+            sheets = data;
+        } else if (data && Array.isArray(data) && data.length === 3) {
+            // It's a single ticket (Array of 3 rows) - Legacy
+            sheets = [data];
+        } else {
+            sheets = [this.createSheetData()];
         }
+
         this.players.set(playerId, {
             name: name,
-            ticket: ticket,
+            sheets: sheets, // Store as sheets
             connected: true
         });
-        return { ticket, name };
+        return { sheets, name };
     },
 
     // Handle ticket update from player (Host Side)
-    handleTicketUpdate(playerId, ticket) {
+    handleTicketUpdate(playerId, sheets) {
         if (this.gameStarted) return;
         if (this.players.has(playerId)) {
-            if (!ticket || !Array.isArray(ticket) || ticket.length !== 3) return;
+            // Basic validation
+            if (!Array.isArray(sheets)) return;
             const player = this.players.get(playerId);
-            player.ticket = ticket;
+            player.sheets = sheets;
         }
     },
 
     // Generate player's lô tô ticket
+    addSheet(notifyHost = true) {
+        if (this.gameStarted) {
+            this.showToast('Không thể thêm tờ khi ván đấu đang diễn ra!', 'error');
+            return;
+        }
+
+        if (this.playerSheets.length >= 5) {
+            this.showToast('Bạn chỉ được chơi tối đa 5 tờ!', 'warning');
+            return;
+        }
+
+        const newSheet = this.createSheetData();
+        this.playerSheets.push(newSheet);
+        this.renderPlayerTicket();
+
+        // Scroll to new sheet
+        // Scroll to new sheet
+        setTimeout(() => {
+            if (this.elements.playerTicket) {
+                this.elements.playerTicket.scrollTo({
+                    left: this.elements.playerTicket.scrollWidth,
+                    behavior: 'smooth'
+                });
+            }
+        }, 100);
+
+        if (notifyHost && window.P2P) {
+            P2P.sendTicketUpdate(this.playerSheets);
+        }
+    },
+
+    removeSheet(index) {
+        if (this.gameStarted) {
+            this.showToast('Không thể bỏ tờ khi ván đấu đang diễn ra!', 'error');
+            return;
+        }
+
+        if (this.playerSheets.length <= 1) {
+            this.showToast('Bạn phải giữ lại ít nhất 1 tờ!', 'warning');
+            return;
+        }
+
+        this.playerSheets.splice(index, 1);
+
+        // Remove marks for this sheet (and shift others? No, marks key includes sheet index)
+        // Actually, marks for deleted sheet are now garbage. 
+        // Marks for subsequent sheets (index > deleted) are now pointing to wrong index!
+        // We must re-index the marks!
+        this.reindexMarks(index);
+
+        this.renderPlayerTicket();
+
+        if (window.P2P) {
+            P2P.sendTicketUpdate(this.playerSheets);
+        }
+    },
+
+    reindexMarks(removedIndex) {
+        const newMarks = new Set();
+        this.markedNumbers.forEach(key => {
+            const [s, t, n] = key.split('-').map(Number);
+            if (s < removedIndex) {
+                newMarks.add(key);
+            } else if (s > removedIndex) {
+                // Shift index down by 1
+                newMarks.add(`${s - 1}-${t}-${n}`);
+            }
+            // If s == removedIndex, drop it
+        });
+        this.markedNumbers = newMarks;
+    },
+
     generatePlayerTicket() {
         if (this.gameStarted) {
             this.showToast('Không thể đổi vé khi ván đấu đang diễn ra!', 'error');
             return;
         }
 
-        this.playerTicket = this.createSheetData();
+        this.playerSheets = [this.createSheetData()];
         this.currentTheme = ['blue', 'green', 'red', 'purple', 'yellow'][Math.floor(Math.random() * 5)];
         this.markedNumbers.clear();
         this.announcedRows.clear();
         this.renderPlayerTicket();
 
         if (window.P2P) {
-            P2P.sendTicketUpdate(this.playerTicket);
+            P2P.sendTicketUpdate(this.playerSheets);
             this.showToast('Đã đổi vé mới!', 'success');
         }
     },
 
-    // Render player ticket to DOM - Authentic Vietnamese Lô Tô Style
+    // Render player ticket as Carousel
     renderPlayerTicket() {
+        if (!this.playerSheets) {
+            this.playerSheets = []; // Safety guard
+        }
+
         this.elements.playerTicket.innerHTML = '';
+        this.elements.playerTicket.className = 'loto-carousel';
 
-        const sheet = document.createElement('div');
-        sheet.className = `loto-sheet theme-${this.currentTheme}`;
+        this.playerSheets.forEach((sheetData, sheetIdx) => {
+            const sheetWrapper = document.createElement('div');
+            sheetWrapper.className = 'loto-sheet-wrapper';
 
-        const sheetHeader = document.createElement('div');
-        sheetHeader.className = 'loto-sheet-header';
-        sheetHeader.textContent = '★ TÂN TÂN - TỐT NHẤT ★';
-        sheet.appendChild(sheetHeader);
+            // Sheet Header with Remove Button
+            const sheetHeader = document.createElement('div');
+            sheetHeader.className = 'sheet-header';
 
-        this.playerTicket.forEach((ticketData, ticketIdx) => {
-            const card = document.createElement('div');
-            card.className = 'loto-card';
+            const title = document.createElement('span');
+            title.textContent = `Tờ ${sheetIdx + 1}`;
+            title.className = 'sheet-title';
 
-            const ticketGrid = document.createElement('div');
-            ticketGrid.className = 'loto-ticket';
+            const btnRemove = document.createElement('button');
+            btnRemove.className = 'btn-remove-sheet';
+            btnRemove.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+            btnRemove.onclick = (e) => {
+                e.stopPropagation(); // Prevent drag/swipe interference
+                if (confirm('Bạn có chắc muốn bỏ tờ này?')) {
+                    this.removeSheet(sheetIdx);
+                }
+            };
 
-            ticketData.forEach((row, rowIdx) => {
-                row.forEach((num, colIdx) => {
-                    const cell = document.createElement('div');
-                    cell.className = 'ticket-cell';
+            if (this.playerSheets.length > 1) {
+                sheetHeader.appendChild(title);
+                sheetHeader.appendChild(btnRemove);
+            } else {
+                sheetHeader.appendChild(title);
+                sheetHeader.style.justifyContent = 'center'; // Center title if no button
+            }
 
-                    // === FIX: Apply dataset to ALL cells (even empty ones) ===
-                    cell.dataset.ticketIndex = ticketIdx;
-                    cell.dataset.row = rowIdx;
+            sheetWrapper.appendChild(sheetHeader);
 
-                    if (num === null) {
-                        cell.classList.add('empty');
-                    } else {
-                        const numSpan = document.createElement('span');
-                        numSpan.textContent = num;
-                        cell.appendChild(numSpan);
+            // Determine Theme for this Sheet
+            const themes = ['blue', 'green', 'red', 'purple', 'yellow'];
+            let baseParams = themes.indexOf(this.currentTheme);
+            if (baseParams === -1) baseParams = 0;
+            // Cycle through themes starting from baseTheme
+            const sheetTheme = themes[(baseParams + sheetIdx) % themes.length];
 
-                        cell.dataset.number = num;
+            const sheetDiv = document.createElement('div');
+            sheetDiv.className = `loto-sheet theme-${sheetTheme}`;
 
-                        if (this.markedNumbers.has(`${ticketIdx}-${num}`)) {
-                            cell.classList.add('marked');
+            sheetData.forEach((ticketData, ticketIdx) => {
+                const card = document.createElement('div');
+                card.className = 'loto-card';
+
+                const ticketGrid = document.createElement('div');
+                ticketGrid.className = 'loto-ticket';
+
+                ticketData.forEach((row, rowIdx) => {
+                    row.forEach((num, colIdx) => {
+                        const cell = document.createElement('div');
+                        cell.className = 'ticket-cell';
+
+                        // Dataset now includes sheetIndex
+                        cell.dataset.sheetIndex = sheetIdx;
+                        cell.dataset.ticketIndex = ticketIdx;
+                        cell.dataset.row = rowIdx;
+
+                        if (num === null) {
+                            cell.classList.add('empty');
+                        } else {
+                            const numSpan = document.createElement('span');
+                            numSpan.textContent = num;
+                            cell.appendChild(numSpan);
+
+                            cell.dataset.number = num;
+
+                            // Mark Check: Includes Sheet Index
+                            if (this.markedNumbers.has(`${sheetIdx}-${ticketIdx}-${num}`)) {
+                                cell.classList.add('marked');
+                            }
+
+                            cell.addEventListener('click', () => this.toggleTicketMark(cell, sheetIdx, ticketIdx, num));
                         }
-
-                        cell.addEventListener('click', () => this.toggleTicketMark(cell, ticketIdx, num));
-                    }
-                    ticketGrid.appendChild(cell);
+                        ticketGrid.appendChild(cell);
+                    });
                 });
+
+                card.appendChild(ticketGrid);
+                sheetDiv.appendChild(card);
             });
 
-            card.appendChild(ticketGrid);
-            sheet.appendChild(card);
+            sheetWrapper.appendChild(sheetDiv);
+            this.elements.playerTicket.appendChild(sheetWrapper);
         });
 
-        this.elements.playerTicket.appendChild(sheet);
+        this.updatePaginationDots();
         this.checkWinCondition();
+
+        // Setup scroll listener for dots (once)
+        if (!this.elements.playerTicket.onscroll) {
+            this.elements.playerTicket.onscroll = this.debounce(() => {
+                this.updatePaginationDots();
+            }, 50);
+        }
+    },
+
+    debounce(func, wait) {
+        let timeout;
+        return function (...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
+        };
+    },
+
+    updatePaginationDots() {
+        const dotsContainer = this.elements.paginationDots;
+        if (!dotsContainer) return;
+
+        dotsContainer.innerHTML = '';
+        if (this.playerSheets.length <= 1) return; // Hide dots if only 1 sheet
+
+        // Calculate current index
+        const scrollLeft = this.elements.playerTicket.scrollLeft;
+        const width = this.elements.playerTicket.offsetWidth;
+        const currentIndex = Math.round(scrollLeft / width);
+
+        for (let i = 0; i < this.playerSheets.length; i++) {
+            const dot = document.createElement('div');
+            dot.className = `dot ${i === currentIndex ? 'active' : ''}`;
+            dot.onclick = () => {
+                const target = this.elements.playerTicket.children[i];
+                if (target) target.scrollIntoView({ behavior: 'smooth' });
+            };
+            dotsContainer.appendChild(dot);
+        }
     },
 
     // Toggle mark on ticket number
-    toggleTicketMark(cell, ticketIdx, num) {
-        const key = `${ticketIdx}-${num}`;
+    toggleTicketMark(cell, sheetIdx, ticketIdx, num) {
+        const key = `${sheetIdx}-${ticketIdx}-${num}`;
 
         if (this.markedNumbers.has(key)) {
             this.markedNumbers.delete(key);
@@ -1171,48 +1369,56 @@ const Game = {
         let hasWin = false;
         let isWaiting = false;
 
-        for (let t = 0; t < 3; t++) {
-            const ticketData = this.playerTicket[t];
-            for (let r = 0; r < 3; r++) {
-                const rowNumbers = ticketData[r].filter(n => n !== null);
-                let validMarkedCount = 0;
+        for (let s = 0; s < this.playerSheets.length; s++) {
+            const sheetData = this.playerSheets[s];
 
-                rowNumbers.forEach(n => {
-                    const cell = document.querySelector(`[data-ticket-index="${t}"][data-number="${n}"]`);
-                    const isMarked = this.markedNumbers.has(`${t}-${n}`);
-                    const isCalled = this.calledNumbers.has(n);
+            for (let t = 0; t < 3; t++) {
+                const ticketData = sheetData[t];
 
-                    if (cell) {
-                        if (isMarked && !isCalled) {
-                            cell.classList.add('invalid-mark');
-                        } else {
-                            cell.classList.remove('invalid-mark');
+                for (let r = 0; r < 3; r++) {
+                    const rowNumbers = ticketData[r].filter(n => n !== null);
+                    let validMarkedCount = 0;
+
+                    rowNumbers.forEach(n => {
+                        // Include Sheet Index in selector
+                        const cell = document.querySelector(`[data-sheet-index="${s}"][data-ticket-index="${t}"][data-number="${n}"]`);
+
+                        // Check precise key match
+                        const isMarked = this.markedNumbers.has(`${s}-${t}-${n}`);
+                        const isCalled = this.calledNumbers.has(n);
+
+                        if (cell) {
+                            if (isMarked && !isCalled) {
+                                cell.classList.add('invalid-mark');
+                            } else {
+                                cell.classList.remove('invalid-mark');
+                            }
                         }
-                    }
 
-                    if (isMarked && isCalled) {
-                        validMarkedCount++;
-                    }
-                });
+                        if (isMarked && isCalled) {
+                            validMarkedCount++;
+                        }
+                    });
 
-                // Get DOM row cells (includes empty ones now)
-                const rowCells = document.querySelectorAll(`[data-ticket-index="${t}"][data-row="${r}"]`);
-                rowCells.forEach(cell => {
-                    cell.classList.remove('winning-row', 'waiting-row');
-                });
+                    // Get DOM row cells (includes empty ones now)
+                    const rowCells = document.querySelectorAll(`[data-sheet-index="${s}"][data-ticket-index="${t}"][data-row="${r}"]`);
+                    rowCells.forEach(cell => {
+                        cell.classList.remove('winning-row', 'waiting-row');
+                    });
 
-                const rowId = `${t}-${r}`;
+                    const rowId = `${s}-${t}-${r}`;
 
-                if (validMarkedCount === 5) {
-                    hasWin = true;
-                    rowCells.forEach(cell => cell.classList.add('winning-row'));
-                    this.announcedRows.delete(rowId);
-                } else if (validMarkedCount === 4) {
-                    isWaiting = true;
-                    rowCells.forEach(cell => cell.classList.add('waiting-row'));
-                    if (!this.announcedRows.has(rowId)) {
-                        this.announceWaitState();
-                        this.announcedRows.add(rowId);
+                    if (validMarkedCount === 5) {
+                        hasWin = true;
+                        rowCells.forEach(cell => cell.classList.add('winning-row'));
+                        this.announcedRows.delete(rowId);
+                    } else if (validMarkedCount === 4) {
+                        isWaiting = true;
+                        rowCells.forEach(cell => cell.classList.add('waiting-row'));
+                        if (!this.announcedRows.has(rowId)) {
+                            this.announceWaitState();
+                            this.announcedRows.add(rowId);
+                        }
                     }
                 }
             }
@@ -1261,14 +1467,18 @@ const Game = {
 
     verifyWin(playerId) {
         const player = this.players.get(playerId);
-        if (!player || !player.ticket) return false;
+        if (!player || (!player.sheets && !player.ticket)) return false;
 
-        const sheetData = player.ticket;
-        for (const ticket of sheetData) {
-            for (const row of ticket) {
-                const rowNumbers = row.filter(n => n !== null);
-                const allCalled = rowNumbers.every(n => this.calledNumbers.has(n));
-                if (allCalled) return true;
+        const sheets = player.sheets || (player.ticket ? [player.ticket] : []);
+
+        for (const sheet of sheets) {
+            for (const ticket of sheet) {
+                for (const row of ticket) {
+                    const rowNumbers = row.filter(n => n !== null);
+                    // If all numbers in this row are called
+                    const allCalled = rowNumbers.every(n => this.calledNumbers.has(n));
+                    if (allCalled) return true;
+                }
             }
         }
         return false;
@@ -1334,10 +1544,14 @@ const Game = {
 
         if (this.gameStarted) {
             this.elements.btnNewTicket.disabled = true;
-            this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-lock"></i> Đã khoá vé';
+            this.elements.btnNewTicket.title = "Đã khoá vé (Ván đang chơi)";
+            this.elements.btnAddSheet.disabled = true;
+            this.elements.btnAddSheet.title = "Không thể thêm tờ khi đang chơi";
         } else {
             this.elements.btnNewTicket.disabled = false;
-            this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-rotate"></i> Đổi vé';
+            this.elements.btnNewTicket.title = "Đổi tất cả vé";
+            this.elements.btnAddSheet.disabled = false;
+            this.elements.btnAddSheet.title = "Thêm tờ mới";
         }
 
         calledNumbers.forEach(num => {
@@ -1354,6 +1568,7 @@ const Game = {
         this.isDrawing = false;
         this.isJoining = false;
         this.resetRemainingNumbers();
+        this.playerSheets = [];
         this.playerTicket = null;
 
         // Reset UI
@@ -1369,7 +1584,11 @@ const Game = {
         if (this.elements.btnDraw) this.elements.btnDraw.disabled = false;
         if (this.elements.btnNewTicket) {
             this.elements.btnNewTicket.disabled = false;
-            this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-rotate"></i> Đổi vé';
+            this.elements.btnNewTicket.title = "Đổi tất cả vé";
+        }
+        if (this.elements.btnAddSheet) {
+            this.elements.btnAddSheet.disabled = false;
+            this.elements.btnAddSheet.title = "Thêm tờ mới";
         }
         if (this.elements.btnLoto) {
             this.elements.btnLoto.disabled = false; // Initially enabled? No, wait logic disables it. 

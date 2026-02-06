@@ -207,12 +207,21 @@
                 <div class="ticket-container glass-card">
                     <div class="ticket-header">
                         <h3><i class="fa-solid fa-ticket"></i> Vé Lô Tô Của Bạn</h3>
-                        <button id="btn-new-ticket" class="btn-small" aria-label="Đổi vé mới"><i
-                                class="fa-solid fa-rotate"></i> Đổi vé</button>
+                        <div class="ticket-actions">
+                            <button id="btn-add-sheet" class="btn-icon-only" title="Thêm tờ mới"
+                                aria-label="Thêm tờ mới">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                            <button id="btn-new-ticket" class="btn-icon-only" title="Đổi tất cả vé"
+                                aria-label="Đổi tất cả vé">
+                                <i class="fa-solid fa-rotate"></i>
+                            </button>
+                        </div>
                     </div>
-                    <div id="player-ticket" class="loto-cards-container">
+                    <div id="player-ticket" class="loto-carousel">
                         <!-- Ticket cards will be generated here -->
                     </div>
+                    <div id="pagination-dots" class="pagination-dots"></div>
                 </div>
 
                 <!-- Lotto Button - Third on mobile, Right column on desktop -->
