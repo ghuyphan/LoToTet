@@ -12,6 +12,7 @@ const Game = {
     playerTicket: null,
     markedNumbers: new Set(),
     announcedRows: new Set(), // Track rows that have already announced "Waiting"
+    waitingPlayers: new Set(), // Track players currently waiting (cờ)
 
     // Anti-spam timers
     _lastWaitAnnounce: 0,
@@ -166,6 +167,15 @@ const Game = {
             // Update saved session with new game state
             P2P.saveSession();
         };
+
+        P2P.onEmote = (emoji, senderId) => {
+            // Don't render own emotes again if we already did (optional check, 
+            // but our P2P.broadcastEmote filters sender, so this is mostly for other players)
+            // Actually, for Player -> Host -> Player echo, we might get it back.
+            // But since we render locally on click, we might want to ignore if it's us?
+            // Since P2P.broadcastEmote filters sender, we should be safe.
+            this.renderEmote(emoji);
+        };
     },
 
     // Cache DOM elements
@@ -181,11 +191,12 @@ const Game = {
             btnJoin: document.getElementById('btn-join'),
 
             // Host elements
+            btnHost: document.getElementById('btn-host'),
             btnBackHost: document.getElementById('btn-back-host'),
-            qrCode: document.getElementById('qr-code'),
             roomCodeDisplay: document.getElementById('room-code-display'),
-            btnCopyCode: document.getElementById('btn-copy-code'),
-            playerCount: document.getElementById('player-count'),
+            btnCopyCode: document.getElementById('btn-copy-code'), // Restored
+            qrCode: document.getElementById('qrcode'),
+            playerCount: document.getElementById('player-count'), // Points to span inside button now
             currentNumber: document.getElementById('current-number'),
             numberText: document.getElementById('number-text'),
             btnDraw: document.getElementById('btn-draw'),
@@ -232,7 +243,21 @@ const Game = {
             // Auto-draw (Host)
             autoDrawToggle: document.getElementById('auto-draw-toggle'),
             autoDrawInterval: document.getElementById('auto-draw-interval'),
-            autoDrawSpeedContainer: document.getElementById('auto-draw-speed-container')
+            autoDrawSpeedContainer: document.getElementById('auto-draw-speed-container'),
+
+            // Emotes
+            emoteBar: document.getElementById('emote-bar'),
+            emoteContainer: document.getElementById('emote-container'),
+
+            // Waiting List (Host)
+            waitingListSection: document.getElementById('waiting-list-section'),
+            waitingList: document.getElementById('waiting-list'),
+
+            // Player List Details (Host - Modal)
+            btnViewPlayers: document.getElementById('btn-view-players'),
+            playerListModal: document.getElementById('player-list-modal'),
+            btnClosePlayerList: document.getElementById('btn-close-player-list'),
+            detailsPlayerList: document.getElementById('details-player-list')
         };
     },
 
@@ -289,6 +314,34 @@ const Game = {
                 if (this.autoDrawEnabled) {
                     this.stopAutoDraw();
                     this.startAutoDraw();
+                }
+            });
+        }
+
+        // Emote buttons
+        document.querySelectorAll('.btn-emote').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const emoji = e.target.dataset.emoji || e.target.textContent;
+                this.sendEmote(emoji);
+            });
+        });
+
+        // Player List Modal (Host)
+        if (this.elements.btnViewPlayers) {
+            this.elements.btnViewPlayers.addEventListener('click', () => {
+                this.elements.playerListModal.classList.add('active');
+                this.updatePlayerListDetails(); // Refresh when opening
+            });
+        }
+        if (this.elements.btnClosePlayerList) {
+            this.elements.btnClosePlayerList.addEventListener('click', () => {
+                this.elements.playerListModal.classList.remove('active');
+            });
+        }
+        if (this.elements.playerListModal) {
+            this.elements.playerListModal.addEventListener('click', (e) => {
+                if (e.target === this.elements.playerListModal) {
+                    this.elements.playerListModal.classList.remove('active');
                 }
             });
         }
@@ -403,6 +456,44 @@ const Game = {
     showScreen(screenId) {
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         document.getElementById(screenId).classList.add('active');
+
+        // Show emote bar only on player screen
+        if (screenId === 'player-screen') {
+            this.elements.emoteBar.classList.remove('hidden');
+        } else {
+            this.elements.emoteBar.classList.add('hidden');
+        }
+    },
+
+    // Send Emote
+    sendEmote(emoji) {
+        // Show locally immediately for responsiveness
+        this.renderEmote(emoji);
+
+        // Send to network
+        P2P.sendEmote(emoji);
+    },
+
+    // Render floating emote
+    renderEmote(emoji) {
+        const el = document.createElement('div');
+        el.className = 'floating-emote';
+        el.textContent = emoji;
+
+        // Randomize start position
+        const startLeft = 10 + Math.random() * 80; // 10% to 90% width
+        el.style.left = `${startLeft}%`;
+
+        // Randomize slight rotation
+        const rotation = -20 + Math.random() * 40;
+        el.style.transform = `rotate(${rotation}deg)`;
+
+        this.elements.emoteContainer.appendChild(el);
+
+        // Cleanup after animation
+        setTimeout(() => {
+            el.remove();
+        }, 3000);
     },
 
     // Go back to home
@@ -417,7 +508,57 @@ const Game = {
         P2P.disconnect();
         this.reset();
         this.players.clear();
+        this.waitingPlayers.clear(); // Clear waiting players
+        if (this.elements.waitingListSection) this.elements.waitingListSection.classList.add('hidden');
         this.showScreen('home-screen');
+    },
+
+    // Update Waiting List UI (Host)
+    updateWaitingList(playerId) {
+        if (!this.elements.waitingList) return;
+
+        this.waitingPlayers.add(playerId);
+
+        // Show section if hidden
+        if (this.waitingPlayers.size > 0) {
+            this.elements.waitingListSection.classList.remove('hidden');
+        }
+
+        // Re-render list
+        this.elements.waitingList.innerHTML = '';
+        this.waitingPlayers.forEach(pid => {
+            const player = this.players.get(pid);
+            const name = player ? (player.name || `Player ${pid.substr(0, 4)}`) : 'Unknown';
+
+            const item = document.createElement('div');
+            item.className = 'waiting-item';
+            item.innerHTML = `<i class="fa-solid fa-flag"></i> <span class="waiting-name">${name}</span>`;
+            this.elements.waitingList.appendChild(item);
+        });
+    },
+
+    // Update Detailed Player List (Host)
+    updatePlayerListDetails() {
+        if (!this.elements.detailsPlayerList) return;
+
+        if (this.players.size === 0) {
+            this.elements.detailsPlayerList.innerHTML = '<p class="empty-list-text">Chưa có người chơi nào.</p>';
+            return;
+        }
+
+        this.elements.detailsPlayerList.innerHTML = '';
+        this.players.forEach((player, id) => {
+            if (!player.connected) return; // Skip disconnected if we want? Or show them as offline? 
+            // Let's show only connected for now or style disconnected differently.
+
+            const item = document.createElement('div');
+            item.className = 'details-player-item';
+
+            const name = player.name || `Người chơi ${id.substr(0, 4)}`;
+            item.innerHTML = `<i class="fa-solid fa-user"></i> <span>${name}</span>`;
+
+            this.elements.detailsPlayerList.appendChild(item);
+        });
     },
 
     // =============================================
@@ -435,6 +576,10 @@ const Game = {
             P2P.onPlayerJoin = (playerId, count, name, ticket) => {
                 const playerData = this.handlePlayerJoin(playerId, name, ticket);
                 this.elements.playerCount.textContent = this.players.size;
+
+                // Update list
+                this.updatePlayerListDetails();
+
                 const displayName = name || `Người chơi ${playerId.substr(0, 4)}`;
                 this.showToast(`${displayName} đã tham gia!`, 'success');
                 return playerData;
@@ -445,6 +590,11 @@ const Game = {
                     this.players.get(playerId).connected = false;
                 }
                 this.elements.playerCount.textContent = this.players.size;
+
+                // Update list (remove or show offline)
+                // For now, handlePlayerJoin adds them back if they reconnect. 
+                // Let's just re-render.
+                this.updatePlayerListDetails();
             };
 
             P2P.onWinClaim = (playerId) => {
@@ -464,6 +614,17 @@ const Game = {
             P2P.onTicketUpdate = (playerId, ticket) => {
                 this.handleTicketUpdate(playerId, ticket);
             };
+
+            P2P.onWaitSignal = (playerId) => {
+                this.updateWaitingList(playerId);
+            };
+
+            P2P.onEmote = (emoji, senderId) => {
+                this.renderEmote(emoji);
+                // Host broadcast is handled in PeerJS layer automatically
+            };
+
+            // Generate QR code
 
             // Generate QR code
             this.generateQRCode(roomCode);
@@ -1150,31 +1311,53 @@ const Game = {
 
         this.checkWinCondition();
     },
-
     reset() {
         this.calledNumbers.clear();
         this.markedNumbers.clear();
         this.announcedRows.clear();
-        this.resetRemainingNumbers();
-        this.currentNumber = null;
         this.gameStarted = false;
+        this.isDrawing = false;
+        this.isJoining = false;
+        this.resetRemainingNumbers();
+        this.playerTicket = null;
 
-        document.querySelectorAll('.number-cell').forEach(cell => {
-            cell.classList.remove('called');
-        });
-
-        this.elements.currentNumber.querySelector('span').textContent = '?';
-        this.elements.numberText.textContent = 'Bấm để bắt đầu';
-        this.elements.calledCount.textContent = '0';
-        this.elements.playerCurrentNumber.querySelector('span').textContent = '?';
-
-        this.elements.btnNewTicket.disabled = false;
-        this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-rotate"></i> Đổi vé';
+        // Reset UI
+        if (this.elements.numbersGrid) {
+            document.querySelectorAll('.number-cell').forEach(c => c.classList.remove('called'));
+        }
+        if (this.elements.calledCount) this.elements.calledCount.textContent = '0';
+        if (this.elements.currentNumber) {
+            this.elements.currentNumber.querySelector('span').textContent = '?';
+            this.elements.currentNumber.classList.remove('new-number');
+        }
+        if (this.elements.numberText) this.elements.numberText.textContent = 'Bấm để bắt đầu';
+        if (this.elements.btnDraw) this.elements.btnDraw.disabled = false;
+        if (this.elements.btnNewTicket) {
+            this.elements.btnNewTicket.disabled = false;
+            this.elements.btnNewTicket.innerHTML = '<i class="fa-solid fa-rotate"></i> Đổi vé';
+        }
+        if (this.elements.btnLoto) {
+            this.elements.btnLoto.disabled = false; // Initially enabled? No, wait logic disables it. 
+            // Actually checkWinCondition controls button state, but initially disabled.
+            // Let's force check or just disable.
+            this.elements.btnLoto.disabled = true;
+            this.elements.btnLoto.textContent = '🎉 KINH!';
+        }
 
         if (P2P.isHost) {
-            this.elements.btnDraw.disabled = false;
             P2P.broadcastReset();
         }
+
+        // Reset Waiting List
+        this.waitingPlayers.clear();
+        if (this.elements.waitingListSection) this.elements.waitingListSection.classList.add('hidden');
+        if (this.elements.waitingList) this.elements.waitingList.innerHTML = '';
+
+        // Reset Player List Details
+        if (this.elements.detailsPlayerList) this.elements.detailsPlayerList.innerHTML = '<p class="empty-list-text">Chưa có người chơi nào.</p>';
+
+        // Clear Emotes
+        if (this.elements.emoteContainer) this.elements.emoteContainer.innerHTML = '';
     },
 
     async startQRScanner() {

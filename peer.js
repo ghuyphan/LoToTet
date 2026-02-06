@@ -66,6 +66,8 @@ const P2P = {
     onWelcome: null,
     onTicketUpdate: null,
     onWinRejected: null,
+    onWaitSignal: null, // New: Handler for wait signals
+    onEmote: null, // New: Handler for receiving emotes
     onError: null,
     onReconnecting: null, // New: Called when attempting to reconnect
     onReconnected: null,  // New: Called when successfully reconnected
@@ -508,6 +510,11 @@ const P2P = {
                     this.connections.forEach((conn) => {
                         if (conn.open) conn.send(waitMsg);
                     });
+
+                    // Trigger Host UI update
+                    if (this.onWaitSignal) {
+                        this.onWaitSignal(data.playerId);
+                    }
                 }
                 break;
 
@@ -534,6 +541,16 @@ const P2P = {
             case 'pong':
                 // Connection is alive, nothing to do
                 console.log('[Ping] Pong received, connection healthy');
+                break;
+
+            case 'emote':
+                if (this.onEmote) {
+                    this.onEmote(data.emoji, data.senderId); // Use senderId if available to position (optional features)
+                }
+                // If Host, propagate to others
+                if (this.isHost) {
+                    this.broadcastEmote(data.emoji, conn ? conn.peer : data.senderId);
+                }
                 break;
         }
     },
@@ -621,6 +638,41 @@ const P2P = {
             type: 'waitSignal',
             playerId: this.peer.id
         });
+    },
+
+    // Broadcast emote (Host -> All Players)
+    broadcastEmote(emoji, senderId) {
+        if (!this.isHost) return;
+
+        const message = {
+            type: 'emote',
+            emoji: emoji,
+            senderId: senderId
+        };
+
+        this.connections.forEach((conn) => {
+            if (conn.open && conn.peer !== senderId) { // Don't echo back to sender if possible (optional)
+                // Actually, simpler to echo to everyone including sender to sync timing? 
+                // Or sender shows immediately.
+                // Let's send to everyone except sender to save bandwidth, 
+                // assuming sender shows it locally immediately.
+                conn.send(message);
+            }
+        });
+    },
+
+    // Send emote (Player -> Host)
+    sendEmote(emoji) {
+        if (this.isHost) {
+            // Host sending emote: Broadcast to all players
+            this.broadcastEmote(emoji, 'HOST');
+        } else if (this.hostConnection) {
+            this.hostConnection.send({
+                type: 'emote',
+                emoji: emoji,
+                senderId: this.peer.id
+            });
+        }
     },
 
     // Get player count

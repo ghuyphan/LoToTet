@@ -482,6 +482,43 @@ body {
     transform: scale(1.05);
 }
 
+.btn-icon-only {
+    position: relative;
+    /* Ensure badges are positioned correctly */
+    overflow: visible;
+    /* Allow badge to overlap */
+}
+
+.btn-icon-only {
+    position: relative;
+    /* Ensure badges are positioned correctly */
+}
+
+.badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: var(--coral-primary);
+    color: white;
+    font-size: 0.7rem;
+    /* Slightly smaller font for better fit */
+    font-weight: 800;
+    /* Extra bold */
+    min-width: 22px;
+    /* Slightly larger pill */
+    height: 22px;
+    border-radius: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    /* Fix vertical alignment */
+    padding: 0 4px;
+    border: 2px solid var(--bg-card);
+    box-shadow: var(--shadow-sm);
+    z-index: 10;
+}
+
 /* Draw Button */
 .btn-draw {
     width: 100%;
@@ -2009,4 +2046,262 @@ body {
     font-size: var(--font-size-xs);
     opacity: 0.8;
     margin-top: var(--space-xs);
+}
+
+/* =============================================
+   EMOTE SYSTEM
+   ============================================= */
+.emote-container {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    overflow: hidden;
+}
+
+.floating-emote {
+    position: absolute;
+    bottom: 0;
+    font-size: 2.5rem;
+    animation: floatUp 3s ease-in forwards;
+    opacity: 0;
+    user-select: none;
+}
+
+@keyframes floatUp {
+    0% {
+        transform: translateY(0) scale(0.5);
+        opacity: 0;
+    }
+
+    10% {
+        opacity: 1;
+        transform: translateY(-20px) scale(1.2);
+    }
+
+    100% {
+        transform: translateY(-80vh) scale(1);
+        opacity: 0;
+    }
+}
+
+.emote-bar {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    gap: 8px;
+    /* Reduced gap */
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    padding: 8px;
+    /* Reduced padding */
+    border-radius: 50px;
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.emote-bar.hidden {
+    transform: translateY(150%);
+}
+
+.btn-emote {
+    width: 36px;
+    /* Reduced from 44px */
+    height: 36px;
+    /* Reduced from 44px */
+    border: none;
+    background: transparent;
+    font-size: 1.2rem;
+    /* Reduced from 1.5rem */
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-emote:hover {
+    transform: scale(1.2);
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.btn-emote:active {
+    transform: scale(0.9);
+}
+
+/* =============================================
+   STAMPING ANIMATION
+   ============================================= */
+.number-cell.marked {
+    background-color: transparent !important;
+    /* Override default bg if any */
+    position: relative;
+    color: var(--coral-dark);
+    /* Text color when marked */
+    font-weight: 800;
+}
+
+.number-cell.marked::after {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    border: 3px solid var(--coral-primary);
+    border-radius: 50%;
+    background: rgba(255, 107, 107, 0.15);
+    z-index: 0;
+    animation: stampBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.number-cell.marked span {
+    position: relative;
+    z-index: 1;
+}
+
+@keyframes stampBounce {
+    0% {
+        transform: scale(2);
+        opacity: 0;
+    }
+
+    60% {
+        transform: scale(0.9);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* =============================================
+   WAITING LIST (HOST)
+   ============================================= */
+#waiting-list-section.hidden {
+    display: none;
+}
+
+.waiting-header {
+    color: var(--warning);
+    margin-bottom: var(--space-md);
+    animation: pulseText 2s infinite;
+}
+
+@keyframes pulseText {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.waiting-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.waiting-item {
+    padding: var(--space-sm) var(--space-md);
+    background: rgba(253, 203, 110, 0.1);
+    border: 1px solid var(--warning);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    animation: slideInLeft 0.3s ease-out;
+}
+
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.waiting-item i {
+    color: var(--warning);
+}
+
+.waiting-name {
+    font-weight: 600;
+}
+
+/* =============================================
+   ROOM CODE GROUP
+   ============================================= */
+.room-code-group {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+#btn-copy-code {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.05);
+    /* Subtle background */
+}
+
+#btn-copy-code:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+/* =============================================
+   PLAYER LIST DETAILS (HOST & MODAL)
+   ============================================= */
+.details-player-list {
+    max-height: 300px;
+    /* Increased height for modal */
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin-top: var(--space-sm);
+}
+
+.modal-actions {
+    margin-top: var(--space-md);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.details-player-item {
+    padding: var(--space-xs) var(--space-sm);
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.details-player-item i {
+    color: var(--teal-accent);
+    font-size: 0.8em;
+}
+
+.empty-list-text {
+    font-style: italic;
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+    text-align: center;
+    padding: var(--space-sm);
 }

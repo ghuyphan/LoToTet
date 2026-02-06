@@ -77,9 +77,10 @@
                 <button id="btn-back-host" class="btn-icon-only" aria-label="Quay lại trang chủ"><i
                         class="fa-solid fa-arrow-left"></i></button>
                 <h2>Chủ Xướng</h2>
-                <div class="player-count">
-                    <span id="player-count">0</span> người chơi
-                </div>
+                <button id="btn-view-players" class="btn-icon-only" aria-label="Danh sách người chơi">
+                    <i class="fa-solid fa-users"></i>
+                    <span id="player-count" class="badge">0</span>
+                </button>
             </header>
 
             <div class="host-layout">
@@ -140,15 +141,26 @@
 
                 <!-- Right Column: Room Info & Called Numbers -->
                 <div class="host-sidebar">
+                    <!-- Waiting List Section -->
+                    <div id="waiting-list-section" class="glass-card hidden">
+                        <h3 class="waiting-header"><i class="fa-solid fa-flag"></i> Đang Đợi (Cờ)</h3>
+                        <div id="waiting-list" class="waiting-list">
+                            <!-- Waiting players will be listed here -->
+                        </div>
+                    </div>
+
+                    <!-- Player List Button (Moved to Header) -->
+
+
                     <!-- QR Code Section -->
                     <div class="qr-section glass-card">
                         <h3>Mã Phòng</h3>
-                        <div id="qr-code"></div>
-                        <div class="room-code">
-                            <span id="room-code-display">------</span>
-                            <button id="btn-copy-code" class="btn-small" aria-label="Sao chép mã phòng"><i
+                        <div class="room-code-group">
+                            <div class="room-code-display" id="room-code-display">------</div>
+                            <button id="btn-copy-code" class="btn-icon-only" aria-label="Sao chép mã phòng"><i
                                     class="fa-regular fa-clipboard"></i></button>
                         </div>
+                        <div id="qrcode" class="qrcode-container"></div>
                     </div>
 
                     <!-- Called Numbers Grid -->
@@ -268,6 +280,31 @@
                 </div>
                 <button id="btn-close-win" class="btn btn-primary">Đóng</button>
             </div>
+        </div>
+
+        <!-- Player List Modal -->
+        <div id="player-list-modal" class="modal">
+            <div class="modal-content glass-card">
+                <h2>Danh sách người chơi</h2>
+                <div id="details-player-list" class="details-player-list">
+                    <p class="empty-list-text">Chưa có người chơi nào.</p>
+                </div>
+                <div class="modal-actions">
+                    <button id="btn-close-player-list" class="btn btn-secondary">Đóng</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Emote Container (Global) -->
+        <div id="emote-container" class="emote-container"></div>
+
+        <!-- Emote Bar (Player Only) -->
+        <div id="emote-bar" class="emote-bar hidden">
+            <button class="btn-emote" data-emoji="❤️">❤️</button>
+            <button class="btn-emote" data-emoji="😂">😂</button>
+            <button class="btn-emote" data-emoji="😮">😮</button>
+            <button class="btn-emote" data-emoji="🎉">🎉</button>
+            <button class="btn-emote" data-emoji="😡">😡</button>
         </div>
 
         <!-- Toast Notifications -->
