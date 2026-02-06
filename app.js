@@ -39,6 +39,9 @@ const Game = {
         this.setupTTSControls();
         this.setupBeforeUnload();
 
+        // Initialize Audio
+        if (window.AudioManager) AudioManager.init();
+
         console.log('Lô Tô game initialized');
     },
 
@@ -476,6 +479,13 @@ const Game = {
 
     // Render floating emote
     renderEmote(emoji) {
+        // Performance Optimization: Limit max concurrent emotes
+        const MAX_EMOTES = 30;
+        if (this.elements.emoteContainer.childElementCount >= MAX_EMOTES) {
+            // Remove the oldest emote immediately to make room
+            this.elements.emoteContainer.firstElementChild.remove();
+        }
+
         const el = document.createElement('div');
         el.className = 'floating-emote';
         el.textContent = emoji;
@@ -492,7 +502,10 @@ const Game = {
 
         // Cleanup after animation
         setTimeout(() => {
-            el.remove();
+            // Check if element is still in DOM (might have been removed by limit check)
+            if (el.parentNode) {
+                el.remove();
+            }
         }, 3000);
     },
 
@@ -576,6 +589,8 @@ const Game = {
             P2P.onPlayerJoin = (playerId, count, name, ticket) => {
                 const playerData = this.handlePlayerJoin(playerId, name, ticket);
                 this.elements.playerCount.textContent = this.players.size;
+
+                if (window.AudioManager) AudioManager.playJoin();
 
                 // Update list
                 this.updatePlayerListDetails();
@@ -697,23 +712,40 @@ const Game = {
         this.isDrawing = true;
         this.elements.btnDraw.disabled = true;
 
+        // Start Shake Animation & Sound
+        const ballContainer = document.querySelector('.number-ball-container');
+        if (ballContainer) {
+            ballContainer.classList.add('shaking');
+        }
+
+        if (window.AudioManager) AudioManager.playDraw();
+        if (navigator.vibrate) navigator.vibrate(50);
+
+        // Wait for shake to complete (400ms)
+        await new Promise(resolve => setTimeout(resolve, 400));
+
+        // Stop shake
+        if (ballContainer) {
+            ballContainer.classList.remove('shaking');
+        }
+
         // Get next number
         const number = this.remainingNumbers.pop();
         this.calledNumbers.add(number);
         this.currentNumber = number;
 
-        // Update UI
+        // Reveal Number (UI Update + Pop Animation)
         this.updateCurrentNumber(number);
         this.markNumberCalled(number);
         this.elements.calledCount.textContent = this.calledNumbers.size;
 
-        // Broadcast to players IMMEDIATELY (before TTS)
+        // Update others
         P2P.broadcastNumber(number, TTS.numberToWords(number));
 
-        // Announce via TTS (host side)
+        // Announce via TTS (after reveal)
         await TTS.announceNumber(number);
 
-        // Re-enable button after TTS completes
+        // Re-enable button
         this.isDrawing = false;
         this.elements.btnDraw.disabled = false;
     },
@@ -1246,7 +1278,10 @@ const Game = {
         if (this.elements.winModal.classList.contains('active')) return;
         this.elements.winnerName.textContent = `${winnerName} đã thắng!`;
         this.elements.winModal.classList.add('active');
-        this.createConfetti();
+
+        // New Effects
+        if (window.AudioManager) AudioManager.playWin();
+
         TTS.announceWinner(winnerName);
     },
 
