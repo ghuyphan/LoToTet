@@ -172,9 +172,12 @@ const P2P = {
     },
 
     // Initialize as host
-    async initHost(retryCount = 0) {
+    async initHost(retryCount = 0, existingRoomCode = null) {
         this.isHost = true;
-        if (retryCount > 0 || !this.roomCode) {
+
+        if (existingRoomCode) {
+            this.roomCode = existingRoomCode;
+        } else if (retryCount > 0 || !this.roomCode) {
             this.roomCode = this.generateRoomCode();
         }
 
@@ -194,9 +197,13 @@ const P2P = {
                 if (err.type === 'unavailable-id') {
                     if (retryCount < 5) {
                         this.peer.destroy();
-                        this.initHost(retryCount + 1).then(resolve).catch(reject);
+                        console.log(`[P2P] ID unavailable, retrying (${retryCount + 1}/5)...`);
+                        // Delay retry to allow previous ghost to clear
+                        setTimeout(() => {
+                            this.initHost(retryCount + 1, existingRoomCode).then(resolve).catch(reject);
+                        }, 1500);
                     } else {
-                        reject(new Error('Unable to generate unique room code.'));
+                        reject(new Error('Unable to claim Room Code (Taken).'));
                     }
                 } else {
                     if (this.onError) this.onError(err);
@@ -257,14 +264,17 @@ const P2P = {
     },
 
     // Initialize as player
-    async initPlayer(roomCode, name, ticket, lastPeerId = null) {
+    async initPlayer(roomCode, name, ticket, preferredId = null) {
         this.isHost = false;
         this.roomCode = roomCode.toUpperCase();
         this._reconnectAttempts = 0;
         this._maxReconnectAttempts = 5;
         this._playerName = name;
         this._playerTicket = ticket;
-        this._lastPeerId = lastPeerId; // Store the ID from previous session
+        this._lastPeerId = preferredId; // Store for metadata usage
+
+        // If we have a preferred ID, try to use it
+        const peerOptions = { ...this.config };
 
         if (!this._visibilityHandlerInit) {
             this.initVisibilityHandler();
@@ -273,11 +283,18 @@ const P2P = {
 
         return new Promise((resolve, reject) => {
             if (this.peer && !this.peer.destroyed) {
-                this._connectToHost(resolve, reject);
-                return;
+                // If we already have a peer, check if it matches our preferred ID
+                if (preferredId && this.peer.id === preferredId) {
+                    this._connectToHost(resolve, reject);
+                    return;
+                }
+                this.peer.destroy();
             }
 
-            this.peer = new Peer(this.config);
+            // Create new peer, optionally with preferred ID
+            this.peer = preferredId
+                ? new Peer(preferredId, peerOptions)
+                : new Peer(peerOptions);
 
             this.peer.on('open', (id) => {
                 console.log('Player peer opened:', id);
@@ -286,6 +303,15 @@ const P2P = {
 
             this.peer.on('error', (err) => {
                 console.error('Peer error:', err);
+
+                // If preferred ID is taken, fall back to random ID
+                if (err.type === 'unavailable-id' && preferredId) {
+                    console.warn('[P2P] Preferred ID unavailable, falling back to random ID');
+                    this.peer.destroy();
+                    this.initPlayer(roomCode, name, ticket, null).then(resolve).catch(reject);
+                    return;
+                }
+
                 if (this.onError) this.onError(err);
                 reject(err);
             });
@@ -468,7 +494,17 @@ const P2P = {
         });
     },
 
+    // Throttling to prevent spam
+    _lastEmoteTime: 0,
+    _lastShoutTime: 0,
+    EMOTE_COOLDOWN: 1000, // 1 second
+    SHOUT_COOLDOWN: 2000, // 2 seconds
+
     sendEmote(emoji) {
+        const now = Date.now();
+        if (now - this._lastEmoteTime < this.EMOTE_COOLDOWN) return;
+        this._lastEmoteTime = now;
+
         if (this.isHost) {
             this.broadcastEmote(emoji, 'HOST');
         } else if (this.hostConnection) {
@@ -485,6 +521,10 @@ const P2P = {
     },
 
     sendShout(text) {
+        const now = Date.now();
+        if (now - this._lastShoutTime < this.SHOUT_COOLDOWN) return;
+        this._lastShoutTime = now;
+
         if (this.isHost) {
             this.broadcastShout(text, 'HOST');
         } else if (this.hostConnection) {

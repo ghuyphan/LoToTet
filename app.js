@@ -61,7 +61,10 @@ const Game = {
 
     setupBeforeUnload() {
         window.addEventListener('beforeunload', (e) => {
-            if (!P2P.isHost && P2P.hostConnection && this.gameStarted) {
+            const isPlayerActive = !P2P.isHost && P2P.hostConnection && this.gameStarted;
+            const isHostActive = P2P.isHost && (this.players.size > 0 || this.gameStarted || this.calledNumbers.size > 0);
+
+            if (isPlayerActive || isHostActive) {
                 e.preventDefault();
                 e.returnValue = 'Bạn đang trong ván chơi. Bạn có chắc muốn thoát?';
                 return e.returnValue;
@@ -288,7 +291,11 @@ const Game = {
             btnViewPlayers: document.getElementById('btn-view-players'),
             playerListModal: document.getElementById('player-list-modal'),
             btnClosePlayerList: document.getElementById('btn-close-player-list'),
-            detailsPlayerList: document.getElementById('details-player-list')
+            detailsPlayerList: document.getElementById('details-player-list'),
+            restoreModal: document.getElementById('restore-modal'),
+            btnConfirmRestore: document.getElementById('btn-confirm-restore'),
+            btnRejectRestore: document.getElementById('btn-reject-restore'),
+            restoreRoomCode: document.getElementById('restore-room-code')
         };
     },
 
@@ -549,26 +556,25 @@ const Game = {
     },
 
     updatePlayerListDetails() {
-        if (!this.elements.detailsPlayerList) return;
-        if (this.players.size === 0) {
-            this.elements.detailsPlayerList.innerHTML = '<p class="empty-list-text">Chưa có người chơi nào.</p>';
-            return;
-        }
-        this.elements.detailsPlayerList.innerHTML = '';
-        this.players.forEach((player, id) => {
-            if (!player.connected) return;
-            const item = document.createElement('div');
-            item.className = 'details-player-item';
-            const name = player.name || `Người chơi ${id.substr(0, 4)}`;
-            const icon = document.createElement('i');
-            icon.className = 'fa-solid fa-user';
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = name;
-            item.appendChild(icon);
-            item.appendChild(document.createTextNode(' '));
-            item.appendChild(nameSpan);
-            this.elements.detailsPlayerList.appendChild(item);
-        });
+        if (this._updatePlayerListTimeout) clearTimeout(this._updatePlayerListTimeout);
+        this._updatePlayerListTimeout = setTimeout(() => {
+            if (!this.elements.detailsPlayerList) return;
+            const connectedPlayers = Array.from(this.players.entries()).filter(([_, p]) => p.connected);
+
+            if (connectedPlayers.length === 0) {
+                this.elements.detailsPlayerList.innerHTML = '<p class="empty-list-text">Chưa có người chơi nào.</p>';
+                return;
+            }
+
+            this.elements.detailsPlayerList.innerHTML = '';
+            connectedPlayers.forEach(([id, player]) => {
+                const item = document.createElement('div');
+                item.className = 'details-player-item';
+                const name = player.name || `Người chơi ${id.substr(0, 4)}`;
+                item.innerHTML = `<i class="fa-solid fa-user"></i> <span>${name}</span>`;
+                this.elements.detailsPlayerList.appendChild(item);
+            });
+        }, 100);
     },
 
     async requestWakeLock() {
@@ -596,22 +602,139 @@ const Game = {
     },
 
     // =============================================
+    // HOST SESSION PERSISTENCE
+    // =============================================
+
+    saveHostState() {
+        if (!P2P.isHost) return;
+        const state = {
+            roomCode: P2P.roomCode,
+            calledNumbers: Array.from(this.calledNumbers),
+            currentNumber: this.currentNumber,
+            timestamp: Date.now()
+        };
+        sessionStorage.setItem('loto_host_state', JSON.stringify(state));
+        console.log('[Host] State saved');
+    },
+
+    restoreHostState() {
+        try {
+            const data = sessionStorage.getItem('loto_host_state');
+            if (!data) return null;
+            const state = JSON.parse(data);
+
+            // expire after 2 hours
+            if (Date.now() - state.timestamp > 2 * 60 * 60 * 1000) {
+                sessionStorage.removeItem('loto_host_state');
+                return null;
+            }
+            return state;
+        } catch (e) {
+            console.error('Failed to restore host state', e);
+            return null;
+        }
+    },
+
+    clearHostState() {
+        sessionStorage.removeItem('loto_host_state');
+    },
+
+    //HO-1: Save state on every draw
+    //HO-2: Save state on player join? No need, players reconnect themselves.
+
+    // =============================================
     // HOST FUNCTIONS
     // =============================================
 
     async startAsHost() {
+        let savedState = this.restoreHostState();
+
+        if (savedState) {
+            this.elements.restoreRoomCode.textContent = savedState.roomCode;
+            this.elements.restoreModal.classList.add('active');
+
+            const choice = await new Promise(resolve => {
+                const onConfirm = () => {
+                    this.elements.restoreModal.classList.remove('active');
+                    cleanup();
+                    resolve('restore');
+                };
+                const onReject = () => {
+                    this.elements.restoreModal.classList.remove('active');
+                    cleanup();
+                    resolve('new');
+                };
+                const cleanup = () => {
+                    this.elements.btnConfirmRestore.removeEventListener('click', onConfirm);
+                    this.elements.btnRejectRestore.removeEventListener('click', onReject);
+                };
+                this.elements.btnConfirmRestore.addEventListener('click', onConfirm);
+                this.elements.btnRejectRestore.addEventListener('click', onReject);
+            });
+
+            if (choice === 'new') {
+                this.clearHostState();
+                savedState = null;
+            }
+        }
+
+        await this._initHostLogic(savedState);
+    },
+
+    async _initHostLogic(savedState) {
         try {
-            this.showToast('Đang tạo phòng...', 'info');
-            const roomCode = await P2P.initHost();
+            let roomCode;
+
+            if (savedState) {
+                this.showToast('Đang khôi phục phiên cũ...', 'info');
+                try {
+                    await P2P.initHost(0, savedState.roomCode);
+                    roomCode = savedState.roomCode;
+
+                    // Restore Game State
+                    this.calledNumbers = new Set(savedState.calledNumbers);
+                    this.currentNumber = savedState.currentNumber;
+
+                    // Re-mark board
+                    this.calledNumbers.forEach(num => {
+                        const el = document.querySelector(`.number-cell[data-number="${num}"]`);
+                        if (el) el.classList.add('active');
+                    });
+
+                    if (this.currentNumber) {
+                        this.elements.currentNumber.querySelector('span').textContent = this.currentNumber;
+                        this.elements.numberText.textContent = TTS.getNumberRhyme(this.currentNumber);
+                    }
+
+                    this.showToast('Đã khôi phục trạng thái!', 'success');
+                } catch (err) {
+                    console.error("Restore failed:", err);
+                    this.showToast('Không thể khôi phục phiên cũ. Đang tạo phòng mới...', 'error');
+                    this.clearHostState();
+                    roomCode = await P2P.initHost();
+                }
+            } else {
+                this.showToast('Đang tạo phòng...', 'info');
+                roomCode = await P2P.initHost();
+            }
 
             // CHANGED: Accept metadata in callback
             P2P.onPlayerJoin = (playerId, count, name, ticket, metadata) => {
                 const playerData = this.handlePlayerJoin(playerId, name, ticket, metadata);
                 this.elements.playerCount.textContent = this.players.size;
-                if (window.AudioManager) AudioManager.playJoin();
                 this.updatePlayerListDetails();
-                const displayName = name || `Người chơi ${playerId.substr(0, 4)}`;
-                this.showToast(`${displayName} đã tham gia!`, 'success');
+
+                // Only announce real new joins or significant reconnects
+                if (!playerData.isReconnect) {
+                    if (window.AudioManager) AudioManager.playJoin();
+                    const displayName = name || `Người chơi ${playerId.substr(0, 4)}`;
+                    this.showToast(`${displayName} đã tham gia!`, 'success');
+                } else {
+                    // Verify if we should notify (e.g. they were gone for a while?)
+                    // For now, silent reconnect to reduce jank
+                    console.log('[Host] Silent reconnect for', playerData.name);
+                }
+
                 return playerData;
             };
 
@@ -680,6 +803,7 @@ const Game = {
             this.showScreen('host-screen');
             this.showToast('Phòng đã sẵn sàng!', 'success');
             this.requestWakeLock();
+            this.saveHostState();
 
         } catch (error) {
             console.error('Failed to start as host:', error);
@@ -748,6 +872,7 @@ const Game = {
 
         this.isDrawing = false;
         this.elements.btnDraw.disabled = false;
+        this.saveHostState();
     },
 
     updateCurrentNumber(number) {
@@ -977,7 +1102,25 @@ const Game = {
             sheets = [this.createSheetData()];
         }
 
-        // RECONNECT LOGIC
+        // 1. RECONNECT SAME ID (Preferred method)
+        if (this.players.has(playerId)) {
+            console.log(`[Host] Player ${name} reconnected with same ID: ${playerId}`);
+            const existing = this.players.get(playerId);
+            const wasConnected = existing.connected;
+
+            // Just update connection status
+            existing.connected = true;
+            if (name) existing.name = name; // Update name if changed
+
+            // If they sent sheets, update them (unless game started)
+            if (!this.gameStarted || !existing.sheets || existing.sheets.length === 0) {
+                existing.sheets = sheets;
+            }
+
+            return { sheets: existing.sheets, name: existing.name, isReconnect: true, wasConnected };
+        }
+
+        // 2. RECONNECT WITH OLD ID (Migration method)
         if (metadata && metadata.lastSessionId && this.players.has(metadata.lastSessionId)) {
             console.log(`[Host] Reconnect detected for ${metadata.lastSessionId} -> ${playerId}`);
             const oldData = this.players.get(metadata.lastSessionId);
@@ -990,10 +1133,10 @@ const Game = {
             });
             this.players.delete(metadata.lastSessionId);
 
-            return { sheets: oldData.sheets, name: oldData.name };
+            return { sheets: oldData.sheets, name: oldData.name, isReconnect: true, wasConnected: false };
         }
 
-        // New Player Logic
+        // 3. NEW PLAYER
         let finalName = name;
         let counter = 2;
         let isDuplicate = true;
@@ -1016,7 +1159,7 @@ const Game = {
             sheets: sheets,
             connected: true
         });
-        return { sheets, name: finalName };
+        return { sheets, name: finalName, isReconnect: false };
     },
 
     handleTicketUpdate(playerId, sheets) {
@@ -1223,6 +1366,10 @@ const Game = {
     checkWinCondition() {
         let hasWin = false;
         let isWaiting = false;
+
+        // Reset near-win highlights
+        document.querySelectorAll('.cell-near-win').forEach(el => el.classList.remove('cell-near-win'));
+
         for (let s = 0; s < this.playerSheets.length; s++) {
             const sheetData = this.playerSheets[s];
             if (!sheetData) continue;
@@ -1232,8 +1379,14 @@ const Game = {
                 for (let r = 0; r < 3; r++) {
                     const rowNumbers = ticketData[r].filter(n => n !== null);
                     let validMarkedCount = 0;
+
+                    // Track cell elements for this row to apply partial highlights
+                    const rowCellElements = [];
+
                     rowNumbers.forEach(n => {
                         const cell = document.querySelector(`[data-sheet-index="${s}"][data-ticket-index="${t}"][data-number="${n}"]`);
+                        if (cell) rowCellElements.push(cell);
+
                         const isMarked = this.markedNumbers.has(`${s}-${t}-${n}`);
                         const isCalled = this.calledNumbers.has(n);
                         if (cell) {
@@ -1245,16 +1398,24 @@ const Game = {
                         }
                         if (isMarked && isCalled) validMarkedCount++;
                     });
+
                     const rowCells = document.querySelectorAll(`[data-sheet-index="${s}"][data-ticket-index="${t}"][data-row="${r}"]`);
-                    rowCells.forEach(cell => cell.classList.remove('winning-row', 'waiting-row'));
+                    // Note: rowCells based on data-row attribute might not exist if I didn't add it in renderPlayerTicket. 
+                    // But standard approach in this codebase seems to rely on individual cells. 
+
                     const rowId = `${s}-${t}-${r}`;
+
                     if (validMarkedCount === 5) {
                         hasWin = true;
-                        rowCells.forEach(cell => cell.classList.add('winning-row'));
+                        // rowCells.forEach(cell => cell.classList.add('winning-row')); // Original
+                        if (rowCellElements.length > 0) rowCellElements.forEach(c => c.classList.add('winning-cell'));
+
                         this.announcedRows.delete(rowId);
                     } else if (validMarkedCount === 4) {
                         isWaiting = true;
-                        rowCells.forEach(cell => cell.classList.add('waiting-row'));
+                        // Start Near-Win Effect
+                        if (rowCellElements.length > 0) rowCellElements.forEach(c => c.classList.add('cell-near-win'));
+
                         if (!this.announcedRows.has(rowId)) {
                             this.announceWaitState();
                             this.announcedRows.add(rowId);
@@ -1367,6 +1528,7 @@ const Game = {
     },
 
     reset() {
+        this.clearHostState();
         this.calledNumbers.clear();
         this.markedNumbers.clear();
         this.announcedRows.clear();
@@ -1684,3 +1846,321 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 window.Game = Game;
+
+/* =============================================
+   MUSIC PLAYER LOGIC
+   ============================================= */
+const MusicPlayer = {
+    audio: new Audio(),
+    playlist: [
+        { name: "🎆 Tết Đong Đầy (Remix 2026)", src: "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Monkeys%20Spinning%20Monkeys.mp3" },
+        { name: "🌸 Xuân Họp Mặt (Trendy)", src: "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Fretless.mp3" },
+        { name: "💃 Lắng Nghe Mùa Xuân Về", src: "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Carefree.mp3" }
+    ],
+    currentIndex: 0,
+    isPlaying: false,
+    playPromise: null,
+    elements: {},
+
+    init() {
+        this.elements = {
+            container: document.querySelector('.music-player'),
+            btnPrev: document.getElementById('btn-music-prev'),
+            btnPlay: document.getElementById('btn-music-play'),
+            btnNext: document.getElementById('btn-music-next'),
+            trackName: document.getElementById('music-track-name'),
+            volume: document.getElementById('music-volume'),
+            inputUrl: document.getElementById('music-url-input'), // Custom Input
+            btnAdd: document.getElementById('btn-add-music')      // Custom Add Button
+        };
+
+        if (!this.elements.container) return;
+
+        // Load Playlist from Storage if exists to persist custom tracks? 
+
+        this.loadTrack(0);
+
+        this.elements.btnPlay.addEventListener('click', () => this.togglePlay());
+        this.elements.btnPrev.addEventListener('click', () => this.prevTrack());
+        this.elements.btnNext.addEventListener('click', () => this.nextTrack());
+
+        this.elements.volume.addEventListener('input', (e) => {
+            this.audio.volume = e.target.value;
+        });
+
+        // Custom URL Events
+        if (this.elements.btnAdd) {
+            this.elements.btnAdd.addEventListener('click', () => this.addCustomTrack());
+        }
+        if (this.elements.inputUrl) {
+            this.elements.inputUrl.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.addCustomTrack();
+            });
+        }
+
+        this.audio.addEventListener('ended', () => this.nextTrack());
+        this.audio.volume = 0.5;
+
+        this.audio.onerror = (e) => {
+            console.warn("Music load failed:", e);
+            this.elements.trackName.textContent = "Lỗi tải nhạc (Thử bài khác)";
+            this.isPlaying = false;
+            this.updateUI();
+        };
+    },
+
+    addCustomTrack() {
+        const url = this.elements.inputUrl.value.trim();
+        if (!url) return;
+
+        // Basic validation or just try? 
+        // Let's add it to playlist and play it immediately.
+        const name = "Nhạc của bạn #" + (this.playlist.length + 1);
+        this.playlist.push({ name: name, src: url });
+        this.elements.inputUrl.value = '';
+
+        // Switch to this new track
+        this.loadTrack(this.playlist.length - 1);
+        this.play();
+        Game.showToast("Đã thêm bài hát mới!", "success");
+    },
+
+    loadTrack(index) {
+        this.currentIndex = index;
+        if (this.currentIndex >= this.playlist.length) this.currentIndex = 0;
+        if (this.currentIndex < 0) this.currentIndex = this.playlist.length - 1;
+
+        const track = this.playlist[this.currentIndex];
+        this.audio.src = track.src;
+        this.elements.trackName.textContent = track.name;
+        this.updateUI();
+    },
+
+    async togglePlay() {
+        if (this.isPlaying) {
+            this.pause();
+        } else {
+            await this.play();
+        }
+    },
+
+    async play() {
+        this.isPlaying = true;
+        this.updateUI();
+        try {
+            this.playPromise = this.audio.play();
+            await this.playPromise;
+        } catch (e) {
+            // Ignore AbortError caused by rapid track changes
+            if (e.name !== 'AbortError') {
+                console.error("Play failed:", e);
+                this.isPlaying = false;
+                this.updateUI();
+                this.elements.trackName.textContent = "Không thể phát (Lỗi link/định dạng)";
+            }
+        }
+    },
+
+    pause() {
+        this.isPlaying = false;
+        this.updateUI();
+        this.audio.pause();
+    },
+
+    updateUI() {
+        const icon = this.elements.btnPlay.querySelector('i');
+        if (this.isPlaying) {
+            icon.className = 'fa-solid fa-pause';
+        } else {
+            icon.className = 'fa-solid fa-play';
+        }
+    },
+
+    prevTrack() {
+        this.pause(); // Ensure clean state transition
+        this.loadTrack(this.currentIndex - 1);
+        this.play();
+    },
+
+    nextTrack() {
+        const wasPlaying = !this.audio.paused;
+        this.loadTrack(this.currentIndex + 1);
+        if (wasPlaying || this.isPlaying) this.play();
+    }
+};
+
+// Remove the patch since we integrated it
+
+
+/* =============================================
+   GAME LOG LOGIC
+   ============================================= */
+const GameLog = {
+    container: null,
+
+    init() {
+        this.container = document.getElementById('game-log');
+    },
+
+    log(message, type = 'System') {
+        if (!this.container) return;
+        const item = document.createElement('div');
+        item.className = `log-item ${type}`;
+        const time = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        item.innerHTML = `<strong>${time}</strong>: ${message}`;
+        this.container.appendChild(item);
+
+        // Limit log size to prevent memory issues
+        if (this.container.children.length > 50) {
+            this.container.removeChild(this.container.firstChild);
+        }
+
+        this.container.scrollTop = this.container.scrollHeight;
+    }
+};
+
+// =============================================
+//  EXTENSIONS & HOOKS
+// =============================================
+
+// Hook into Game.init
+const _originalInit = Game.init;
+Game.init = function () {
+    _originalInit.call(this);
+    MusicPlayer.init();
+
+};
+
+// Hook into Game.startAsHost to setup logging
+const _originalStartAsHost = Game.startAsHost;
+Game.startAsHost = async function () {
+    await _originalStartAsHost.call(this);
+
+    // Wrap P2P callbacks for logging
+    const _originalOnPlayerJoin = P2P.onPlayerJoin;
+    P2P.onPlayerJoin = (playerId, count, name, ticket, metadata) => {
+        console.log("[Wrapper] Player Join:", playerId, name);
+        const res = _originalOnPlayerJoin(playerId, count, name, ticket, metadata);
+        console.log("[Wrapper] Result:", res);
+
+        // Force update count if original didn't work (Safety Fallback)
+        if (Game.elements && Game.elements.playerCount) {
+            console.log("[Wrapper] Updating count to:", Game.players.size);
+            Game.elements.playerCount.textContent = Game.players.size;
+        }
+
+        GameLog.log(`${name || 'Người chơi'} đã tham gia`, 'Join');
+        return res;
+        return res;
+    };
+
+    // Wrap onPlayerLeave to log and fix count
+    const _originalOnPlayerLeave = P2P.onPlayerLeave;
+    P2P.onPlayerLeave = (playerId, count) => {
+        if (_originalOnPlayerLeave) _originalOnPlayerLeave(playerId, count);
+
+        // Fix: Update with actual connected count from P2P, not Game.players.size
+        if (Game.elements && Game.elements.playerCount) {
+            console.log("[Wrapper] Player Leave. Count:", count);
+            Game.elements.playerCount.textContent = count;
+        }
+
+        const player = Game.players.get(playerId);
+        GameLog.log(`${(player && player.name) || 'Người chơi'} đã rời phòng`, 'Leave');
+    };
+
+    const _originalOnWinClaim = P2P.onWinClaim;
+    P2P.onWinClaim = (playerId) => {
+        const player = Game.players.get(playerId);
+        const name = player ? player.name : 'Ai đó';
+        GameLog.log(`🚨 ${name} BÁO KINH!`, 'Win');
+        _originalOnWinClaim(playerId);
+    };
+
+    // Log initial message
+    GameLog.log("Phòng đã mở. Mã phòng: " + P2P.roomCode, 'System');
+};
+
+// Hook into Game.drawNumber for logging
+const _originalDrawNumber = Game.drawNumber;
+Game.drawNumber = async function () {
+    if (this.isDrawing) return;
+    await _originalDrawNumber.call(this);
+    if (this.currentNumber) {
+        GameLog.log(`Số ${this.currentNumber} - ${TTS.numberToWords(this.currentNumber)}`, 'Draw');
+    }
+};
+
+// Implement verifyWin with visual highlight
+Game.verifyWin = function (playerId) {
+    const player = this.players.get(playerId);
+    if (!player) return false;
+
+    // Check all sheets
+    const sheets = player.sheets || (player.ticket ? [player.ticket] : []);
+    for (let sIdx = 0; sIdx < sheets.length; sIdx++) {
+        const sheet = sheets[sIdx];
+        for (let tIdx = 0; tIdx < sheet.length; tIdx++) {
+            const ticket = sheet[tIdx];
+            for (let rIdx = 0; rIdx < ticket.length; rIdx++) {
+                const row = ticket[rIdx];
+                const rowNumbers = row.filter(n => n !== null);
+                if (rowNumbers.length > 0 && rowNumbers.every(num => this.calledNumbers.has(num))) {
+                    // Log details
+                    console.log(`[WIN] Player ${player.name} won on Sheet ${sIdx + 1}, Ticket ${tIdx + 1}, Row ${rIdx + 1}: [${rowNumbers.join(', ')}]`);
+                    GameLog.log(`Hàng thắng: ${rowNumbers.join(', ')}`, 'Win');
+                    this.lastWinningRow = rowNumbers;
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+};
+
+// Hook into showWin to display winning numbers
+const _originalShowWin = Game.showWin;
+Game.showWin = function (winnerName) {
+    _originalShowWin.call(this, winnerName);
+
+    // Trigger Confetti
+    if (window.Confetti && typeof window.Confetti.burst === 'function') {
+        window.Confetti.burst();
+    }
+
+    if (this.lastWinningRow) {
+        // Check if already displayed
+        if (this.elements.winModal.querySelector('.winning-row-display')) {
+            this.elements.winModal.querySelector('.winning-row-display').remove();
+        }
+
+        const winRowDiv = document.createElement('div');
+        winRowDiv.className = 'winning-row-display';
+        winRowDiv.style.margin = '1rem 0';
+        winRowDiv.innerHTML = `<h3 style="color:var(--coral-dark);margin-bottom:0.5rem">Số trúng thưởng</h3>
+                                <div class="win-numbers" style="display:flex;justify-content:center;gap:0.5rem">
+                                    ${this.lastWinningRow.map(n =>
+            `<span class="win-number" style="
+                                            background:var(--success);
+                                            color:white;
+                                            padding:5px 10px;
+                                            border-radius:50%;
+                                            font-weight:bold;
+                                            font-size:1.2rem;
+                                            box-shadow:var(--shadow-sm);
+                                         ">${n}</span>`
+        ).join('')}
+                                </div>`;
+
+        const content = this.elements.winModal.querySelector('.modal-content');
+        // Insert after the winner text (p#winner-name)
+        const winnerText = this.elements.winnerName;
+        if (winnerText && winnerText.parentNode) {
+            winnerText.parentNode.insertBefore(winRowDiv, winnerText.nextSibling);
+        } else {
+            content.appendChild(winRowDiv);
+        }
+
+        this.lastWinningRow = null;
+    }
+};

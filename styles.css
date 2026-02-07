@@ -158,7 +158,7 @@ h3 i {
 }
 
 .btn-icon-only i {
-    font-size: 1.25em;
+    font-size: 1rem;
 }
 
 .modal-close i {
@@ -2830,4 +2830,237 @@ body {
 .btn-shout-preset:active {
     transform: scale(0.95);
     background: var(--primary-light);
+}
+
+/* =============================================
+   MUSIC PLAYER
+   ============================================= */
+.music-player {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    margin-top: var(--space-lg);
+    background: linear-gradient(135deg, var(--bg-card) 0%, #FFF5F5 100%);
+    border: 1px solid rgba(255, 107, 107, 0.2);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    box-shadow: var(--shadow-sm);
+}
+
+.music-player h3 {
+    margin-bottom: var(--space-xs);
+    font-size: var(--font-size-md);
+    color: var(--coral-dark);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.music-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: var(--space-xs);
+}
+
+.music-info {
+    text-align: center;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    font-weight: 600;
+    min-height: 1.2em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#music-volume {
+    width: 100%;
+    accent-color: var(--coral-primary);
+    height: 4px;
+    margin-top: var(--space-xs);
+    cursor: pointer;
+}
+
+/* Custom Music Input */
+.music-custom-input {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    margin-bottom: 4px;
+}
+
+.music-custom-input input {
+    flex: 1;
+    padding: 6px 10px;
+    border-radius: 15px;
+    border: 1px solid rgba(255, 107, 107, 0.3);
+    font-size: 0.85rem;
+    background: rgba(255, 255, 255, 0.8);
+    color: var(--text-primary);
+    transition: all 0.2s;
+}
+
+.music-custom-input input:focus {
+    outline: none;
+    border-color: var(--coral-primary);
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.1);
+}
+
+.music-custom-input button {
+    background: var(--coral-light);
+    color: var(--coral-dark);
+    border: 1px solid rgba(255, 107, 107, 0.2);
+}
+
+.music-custom-input button:hover {
+    background: var(--coral-primary);
+    color: white;
+}
+
+
+/* =============================================
+   GAME LOG
+   ============================================= */
+.game-log-section {
+    margin-top: var(--space-lg);
+    max-height: 300px;
+    display: flex;
+    flex-direction: column;
+}
+
+.game-log-section h3 {
+    font-size: var(--font-size-md);
+    margin-bottom: var(--space-sm);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.game-log {
+    flex: 1;
+    overflow-y: auto;
+    border: 1px solid rgba(45, 52, 54, 0.1);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm);
+    background: var(--bg-secondary);
+    font-size: 0.8rem;
+    /* Use a smaller font for logs */
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    /* Fixed height for scroll */
+    scroll-behavior: smooth;
+}
+
+.log-item {
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: var(--bg-card);
+    border-left: 3px solid var(--text-muted);
+    animation: fadeIn 0.3s ease;
+    line-height: 1.4;
+    word-wrap: break-word;
+}
+
+.log-item.System {
+    border-left-color: var(--text-muted);
+    color: var(--text-secondary);
+}
+
+.log-item.Draw {
+    border-left-color: var(--gold-primary);
+    background: #FFF9E6;
+    color: var(--text-primary);
+}
+
+.log-item.Win {
+    border-left-color: var(--success);
+    background: #E6FFF9;
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+.log-item.Join {
+    border-left-color: var(--teal-accent);
+    color: var(--text-primary);
+}
+
+/* =============================================
+   VISUAL EFFECTS
+   ============================================= */
+
+/* Near Win Glow */
+.row-near-win {
+    position: relative;
+    /* overflow: hidden; */
+    /* Can't hide overflow or stamps get cut */
+}
+
+/* Add a pseudo-element to the cell container or row container */
+
+
+/* Since tickets are grids, we can't style "rows" easily with CSS alone unless we change the DOM. 
+   Assuming I will add a class to the 9 cells of a row, or wrap them. 
+   Actually, the cells are just flat divs in a grid. 
+   Plan for app.js: identify the indices of the rows. 
+   The 'row-near-win' class might need to be applied to the cells themselves or an overlay. 
+   Better approach: .cell-near-win applied to all cells in that row.
+*/
+
+.cell-near-win {
+    background-color: rgba(255, 179, 71, 0.15) !important;
+    border-top: 1px solid var(--gold-primary);
+    border-bottom: 1px solid var(--gold-primary);
+}
+
+.cell-near-win:first-child,
+.cell-near-win:nth-child(9n+1) {
+    border-left: 1px solid var(--gold-primary);
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+}
+
+.cell-near-win:last-child,
+.cell-near-win:nth-child(9n) {
+    border-right: 1px solid var(--gold-primary);
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
+
+/* Stamp Animation */
+@keyframes stampIn {
+    0% {
+        opacity: 0;
+        transform: scale(3) rotate(15deg);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(0.8) rotate(-10deg);
+    }
+
+    70% {
+        transform: scale(1.1) rotate(-5deg);
+    }
+
+    100% {
+        transform: scale(1) rotate(-8deg);
+    }
+}
+
+.ticket-cell.marked::after {
+    animation: stampIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Host Winning Row Highlight */
+.winning-cell {
+    background-color: #E6FFF9 !important;
+    border: 2px solid var(--success) !important;
+    z-index: 10;
+    box-shadow: 0 0 5px rgba(0, 184, 148, 0.5);
 }
