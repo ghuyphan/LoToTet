@@ -118,7 +118,8 @@ const TTS = {
         rate: 0.9,
         pitch: 1,
         volume: 1,
-        voice: null
+        voice: null,
+        useOnlineTTS: false // Renamed from useEdgeTTS
     },
 
     // Speech synthesis instance
@@ -126,6 +127,10 @@ const TTS = {
 
     // Initialize TTS
     init() {
+        // Load settings
+        const useOnline = localStorage.getItem('loto_use_online_tts');
+        this.config.useOnlineTTS = useOnline === 'true';
+
         // Load Vietnamese voice when available
         this.loadVoices();
 
@@ -191,18 +196,28 @@ const TTS = {
     },
 
     // Speak a number with its rhyme
-    speakNumber(num) {
-        // Cancel any ongoing speech
+    async speakNumber(num) {
+        const rhyme = this.getNumberRhyme(num);
+        const text = `Số ${this.numberToWords(num)}... ${rhyme}`;
+
+        // 1. Try Online TTS if enabled
+        if (this.config.useOnlineTTS && window.GoogleTTS) {
+            try {
+                // Speech rate mapping: 0.9 -> 1 (normal)
+                await window.GoogleTTS.speak(text, 1);
+                return;
+            } catch (e) {
+                console.warn('Online TTS failed, falling back to System TTS', e);
+                // Fallthrough to System TTS
+            }
+        }
+
+        // 2. System TTS (Fallback)
         this.synth.cancel();
 
-        // Small delay to ensure cancel takes effect
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             setTimeout(() => {
-                const rhyme = this.getNumberRhyme(num);
-                const text = `Số ${this.numberToWords(num)}... ${rhyme}`;
                 const utterance = new SpeechSynthesisUtterance(text);
-
-                // Apply configuration
                 utterance.rate = this.config.rate;
                 utterance.pitch = this.config.pitch;
                 utterance.volume = this.config.volume;
@@ -211,32 +226,34 @@ const TTS = {
                     utterance.voice = this.config.voice;
                 }
 
-                // Try to use Vietnamese language
                 utterance.lang = 'vi-VN';
-
-                // Handle completion
-                utterance.onend = () => {
+                utterance.onend = resolve;
+                utterance.onerror = (e) => {
+                    console.warn('TTS error:', e.error);
                     resolve();
                 };
 
-                utterance.onerror = (event) => {
-                    console.warn('TTS error:', event.error);
-                    resolve(); // Don't reject, just continue
-                };
-
-                // Start speaking
                 this.synth.speak(utterance);
 
-                // Fallback timeout in case onend never fires
-                setTimeout(() => {
-                    resolve();
-                }, 5000);
+                // Safety timeout
+                setTimeout(resolve, 5000);
             }, 100);
         });
     },
 
     // Speak custom text
-    speak(text) {
+    async speak(text) {
+        // 1. Try Online TTS if enabled
+        if (this.config.useOnlineTTS && window.GoogleTTS) {
+            try {
+                await window.GoogleTTS.speak(text, 1);
+                return;
+            } catch (e) {
+                console.warn('Online TTS failed, falling back to System TTS', e);
+            }
+        }
+
+        // 2. System TTS
         this.synth.cancel();
 
         const utterance = new SpeechSynthesisUtterance(text);
@@ -249,9 +266,9 @@ const TTS = {
             utterance.voice = this.config.voice;
         }
 
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             utterance.onend = resolve;
-            utterance.onerror = reject;
+            utterance.onerror = resolve;
             this.synth.speak(utterance);
         });
     },
@@ -276,9 +293,25 @@ const TTS = {
         this.config.volume = Math.max(0, Math.min(1, volume));
     },
 
+    // Toggle Online TTS
+    setUseOnlineTTS(enabled) {
+        this.config.useOnlineTTS = enabled;
+        localStorage.setItem('loto_use_online_tts', enabled);
+
+        // Pre-connect or check?
+        if (enabled) {
+            console.log('Switched to Google TTS (Online)');
+        } else {
+            console.log('Switched to System TTS (Offline)');
+        }
+    },
+
     // Stop speaking
     stop() {
         this.synth.cancel();
+        // Also need to stop Edge TTS? 
+        // EdgeTTS creates new AudioContext for each speak, so previous one ends on its own or we can reload page. 
+        // For now, simpler implementation is fine.
     }
 };
 

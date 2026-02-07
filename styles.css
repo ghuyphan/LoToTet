@@ -7,10 +7,11 @@
 /* CSS Variables - Design Tokens */
 :root {
     /* Light Mode Colors */
-    --bg-primary: #FFF9F5;
-    --bg-secondary: #FFF5EE;
-    --bg-card: #FFFFFF;
-    --bg-card-hover: #FFFAF7;
+    --bg-primary: #f0f4f8;
+    /* Soft blue-grey tint */
+    --bg-secondary: #ffffff;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f8fafc;
 
     /* Accent Colors - Coral & Gold */
     --coral-primary: #FF6B6B;
@@ -75,9 +76,12 @@
 /* Dark Mode Colors */
 [data-theme="dark"] {
     --bg-primary: #0f172a;
+    /* Slate 900 */
     --bg-secondary: #1e293b;
+    /* Slate 800 */
     --bg-card: #1e293b;
     --bg-card-hover: #334155;
+    /* Slate 700 */
 
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
@@ -165,7 +169,82 @@ h3 i {
     font-size: 1.5em;
 }
 
-/* Toast notifications have role='alert' for screen reader accessibility */
+/* =============================================
+   SLIDERS (Range Input)
+   ============================================= */
+input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    background: transparent;
+    cursor: pointer;
+    height: 24px;
+}
+
+input[type=range]:focus {
+    outline: none;
+}
+
+/* Slider Runable Track */
+input[type=range]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 6px;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+}
+
+[data-theme="dark"] input[type=range]::-webkit-slider-runnable-track {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Slider Thumb */
+input[type=range]::-webkit-slider-thumb {
+    height: 18px;
+    width: 18px;
+    border-radius: 50%;
+    background: var(--coral-primary);
+    cursor: pointer;
+    -webkit-appearance: none;
+    margin-top: -6px;
+    /* center thumb on track */
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--transition-fast);
+}
+
+input[type=range]:focus::-webkit-slider-thumb {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 4px rgba(255, 107, 107, 0.2);
+}
+
+/* Firefox Styles */
+input[type=range]::-moz-range-track {
+    width: 100%;
+    height: 6px;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+}
+
+[data-theme="dark"] input[type=range]::-moz-range-track {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+input[type=range]::-moz-range-thumb {
+    height: 18px;
+    width: 18px;
+    border: none;
+    border-radius: 50%;
+    background: var(--coral-primary);
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--transition-fast);
+}
+
+input[type=range]:focus::-moz-range-thumb {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 4px rgba(255, 107, 107, 0.2);
+}
 
 /* Reset & Base */
 *,
@@ -1658,8 +1737,10 @@ body {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(45, 52, 54, 0.6);
-    /* backdrop-filter: blur(12px); */
+    background: rgba(15, 23, 42, 0.7);
+    /* Darker backdrop */
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     z-index: 1000;
     align-items: center;
     justify-content: center;
@@ -1689,6 +1770,12 @@ body {
     background: var(--bg-card);
     box-shadow: var(--shadow-xl);
     /* No animation - prevents double-play bug */
+}
+
+/* Ensure glass effect persists in dark mode */
+[data-theme="dark"] .modal-content.glass-card {
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 @keyframes modalSlideIn {
@@ -1729,10 +1816,44 @@ body {
     }
 }
 
-.modal-content h2 {
+.modal-header {
     text-align: center;
     margin-bottom: var(--space-lg);
+    position: relative;
+}
+
+.modal-header.centered {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.modal-icon {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, var(--coral-light) 0%, var(--coral-primary) 100%);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8rem;
+    margin-bottom: var(--space-xs);
+    box-shadow: var(--shadow-md), 0 4px 15px rgba(255, 107, 107, 0.4);
+}
+
+.modal-header h3 {
+    font-size: var(--font-size-xl);
     color: var(--text-primary);
+    font-weight: 800;
+    margin: 0;
+}
+
+.modal-header p {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    margin: 0;
 }
 
 /* Join Modal */
@@ -2252,10 +2373,48 @@ body {
     display: none;
 }
 
-#auto-draw-toggle:checked~#auto-draw-speed-container,
-.auto-draw-controls:has(#auto-draw-toggle:checked) #auto-draw-speed-container {
+/* =============================================
+   HOST CONTROLS GROUP (Auto Draw + TTS)
+   ============================================= */
+.host-controls-group {
     display: flex;
+    flex-direction: column;
+    padding: var(--space-lg);
+    gap: var(--space-md);
 }
+
+.control-divider {
+    height: 1px;
+    background: rgba(0, 0, 0, 0.08);
+    /* Light Divider */
+    margin: var(--space-xs) 0;
+}
+
+[data-theme="dark"] .control-divider {
+    background: rgba(255, 255, 255, 0.08);
+    /* Dark Mode Divider */
+}
+
+/* Specific Adjustments inside the group */
+.auto-draw-controls,
+.tts-controls {
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+    background: transparent;
+    border: none;
+}
+
+.auto-draw-speed {
+    margin-top: var(--space-sm);
+    padding-top: var(--space-sm);
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] .auto-draw-speed {
+    border-top-color: rgba(255, 255, 255, 0.05);
+}
+
 
 /* =============================================
    MUTE BUTTON
@@ -2816,20 +2975,40 @@ body {
 }
 
 .btn-shout-preset {
-    padding: var(--space-md);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
+    padding: var(--space-lg);
+    background: var(--bg-card);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    /* Subtle border */
     border-radius: var(--radius-md);
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-primary);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     text-align: center;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    min-height: 60px;
+}
+
+[data-theme="dark"] .btn-shout-preset {
+    border-color: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.btn-shout-preset:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    background: var(--bg-card-hover);
+    border-color: var(--coral-light);
+    color: var(--coral-dark);
 }
 
 .btn-shout-preset:active {
     transform: scale(0.95);
-    background: var(--primary-light);
+    background: var(--bg-secondary);
 }
 
 /* =============================================

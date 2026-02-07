@@ -95,6 +95,21 @@
             <div class="host-layout">
                 <!-- Left Column: Main Number Display -->
                 <div class="host-main">
+                    <!-- QR Code Section (Moved) -->
+                    <div class="qr-section glass-card compact">
+                        <div class="qr-header">
+                            <h3>Mã Phòng</h3>
+                            <button id="btn-toggle-qr" class="btn-icon-only btn-small" aria-label="Hiện/Ẩn QR"><i
+                                    class="fa-solid fa-chevron-up"></i></button>
+                        </div>
+                        <div class="room-code-group">
+                            <div class="room-code-display" id="room-code-display">------</div>
+                            <button id="btn-copy-code" class="btn-icon-only" aria-label="Sao chép mã phòng"><i
+                                    class="fa-regular fa-clipboard"></i></button>
+                        </div>
+                        <div id="qrcode" class="qrcode-container"></div>
+                    </div>
+
                     <!-- Current Number Display -->
                     <div class="current-number-section glass-card">
                         <div class="number-ball-container">
@@ -111,65 +126,69 @@
                         <span>Xướng Số</span>
                     </button>
 
-                    <!-- Combined Auto Draw & TTS Controls -->
-                    <div class="host-controls-group glass-card">
-                        <!-- Auto-Draw Toggle -->
-                        <div class="auto-draw-controls">
-                            <div class="auto-draw-header">
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="auto-draw-toggle">
-                                    <span class="slider"></span>
-                                </label>
-                                <span class="auto-draw-label">TV Xướng Tự Động</span>
+                    <div class="host-widgets-grid">
+                        <!-- Game Controls (Merged) -->
+                        <div class="game-controls glass-card">
+                            <h3><i class="fa-solid fa-gamepad"></i> Điều Khiển Game</h3>
+
+                            <!-- Auto Draw Section -->
+                            <div class="control-section">
+                                <div class="auto-draw-header">
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="auto-draw-toggle">
+                                        <span class="slider"></span>
+                                    </label>
+                                    <span class="auto-draw-label">Tự động xướng</span>
+                                </div>
+                                <div class="auto-draw-speed" id="auto-draw-speed-container">
+                                    <label>Mỗi:</label>
+                                    <select id="auto-draw-interval">
+                                        <option value="3000">3 giây</option>
+                                        <option value="5000" selected>5 giây</option>
+                                        <option value="8000">8 giây</option>
+                                        <option value="10000">10 giây</option>
+                                        <option value="15000">15 giây</option>
+                                    </select>
+                                </div>
                             </div>
-                            <div class="auto-draw-speed" id="auto-draw-speed-container">
-                                <label>Mỗi:</label>
-                                <select id="auto-draw-interval">
-                                    <option value="3000">3 giây</option>
-                                    <option value="5000" selected>5 giây</option>
-                                    <option value="8000">8 giây</option>
-                                    <option value="10000">10 giây</option>
-                                    <option value="15000">15 giây</option>
-                                </select>
+
+                            <div class="divider"></div>
+
+                            <!-- TTS Section -->
+                            <div class="control-section">
+                                <h4><i class="fa-solid fa-microphone-lines"></i> Giọng Nói</h4>
+                                <div class="control-row">
+                                    <label>Tốc độ:</label>
+                                    <input type="range" id="tts-speed" min="0.5" max="1.5" step="0.1" value="0.9">
+                                    <span id="speed-value">0.9x</span>
+                                </div>
+                                <div class="control-row">
+                                    <label>Âm lượng:</label>
+                                    <input type="range" id="tts-volume" min="0" max="1" step="0.1" value="1">
+                                    <span id="volume-value">100%</span>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="control-divider"></div>
-
-                        <!-- TTS Controls -->
-                        <div class="tts-controls">
-                            <h3><i class="fa-solid fa-volume-high"></i> Giọng Nói</h3>
-                            <div class="control-row">
-                                <label>Tốc độ:</label>
-                                <input type="range" id="tts-speed" min="0.5" max="1.5" step="0.1" value="0.9">
-                                <span id="speed-value">0.9x</span>
+                        <!-- Music Player -->
+                        <div class="music-player glass-card">
+                            <h3><i class="fa-solid fa-music"></i> Nhạc Tết 🧧</h3>
+                            <div class="music-controls">
+                                <button id="btn-music-prev" class="btn-icon-only btn-small" aria-label="Bài trước">
+                                    <i class="fa-solid fa-backward"></i>
+                                </button>
+                                <button id="btn-music-play" class="btn-icon-only" aria-label="Phát/Dừng">
+                                    <i class="fa-solid fa-play"></i>
+                                </button>
+                                <button id="btn-music-next" class="btn-icon-only btn-small" aria-label="Bài sau">
+                                    <i class="fa-solid fa-forward"></i>
+                                </button>
                             </div>
-                            <div class="control-row">
-                                <label>Âm lượng:</label>
-                                <input type="range" id="tts-volume" min="0" max="1" step="0.1" value="1">
-                                <span id="volume-value">100%</span>
+                            <div class="music-info">
+                                <span id="music-track-name">Chọn bài hát...</span>
                             </div>
+                            <input type="range" id="music-volume" min="0" max="1" step="0.1" value="0.5">
                         </div>
-                    </div>
-
-                    <!-- Music Player -->
-                    <div class="music-player glass-card">
-                        <h3><i class="fa-solid fa-music"></i> Nhạc Tết 🧧</h3>
-                        <div class="music-controls">
-                            <button id="btn-music-prev" class="btn-icon-only btn-small" aria-label="Bài trước">
-                                <i class="fa-solid fa-backward"></i>
-                            </button>
-                            <button id="btn-music-play" class="btn-icon-only" aria-label="Phát/Dừng">
-                                <i class="fa-solid fa-play"></i>
-                            </button>
-                            <button id="btn-music-next" class="btn-icon-only btn-small" aria-label="Bài sau">
-                                <i class="fa-solid fa-forward"></i>
-                            </button>
-                        </div>
-                        <div class="music-info">
-                            <span id="music-track-name">Chọn bài hát...</span>
-                        </div>
-                        <input type="range" id="music-volume" min="0" max="1" step="0.1" value="0.5">
                     </div>
                 </div>
 
@@ -187,16 +206,7 @@
                     <!-- Player List Button (Moved to Header) -->
 
 
-                    <!-- QR Code Section -->
-                    <div class="qr-section glass-card">
-                        <h3>Mã Phòng</h3>
-                        <div class="room-code-group">
-                            <div class="room-code-display" id="room-code-display">------</div>
-                            <button id="btn-copy-code" class="btn-icon-only" aria-label="Sao chép mã phòng"><i
-                                    class="fa-regular fa-clipboard"></i></button>
-                        </div>
-                        <div id="qrcode" class="qrcode-container"></div>
-                    </div>
+
 
                     <!-- Called Numbers Grid -->
                     <div class="called-numbers glass-card">
@@ -280,20 +290,22 @@
         <!-- Restore Session Modal -->
         <div id="restore-modal" class="modal">
             <div class="modal-content glass-card">
-                <div class="modal-header centered">
-                    <div class="modal-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
-                    <h3>Phục Hồi?</h3>
+                <div class="modal-header">
+                    <h3><i class="fa-solid fa-clock-rotate-left"></i> Phục Hồi Ván Chơi</h3>
+                    <p>Tìm thấy dữ liệu ván chơi cũ.</p>
                 </div>
                 <div class="modal-body">
-                    <p>Tìm thấy ván chơi cũ (Mã: <strong id="restore-room-code">...</strong>).</p>
-                    <p style="margin-bottom: 1.5rem;">Bạn có muốn tiếp tục không?</p>
+                    <p>Bạn có muốn tiếp tục ván chơi trước đó (Mã: <strong id="restore-room-code">...</strong>) không?
+                    </p>
+                    <p class="warning-text" style="color: var(--text-secondary); margin-bottom: 1.5rem;"><small>⚠ Chọn
+                            "Ván Mới" sẽ xoá kết quả ván cũ.</small></p>
                     <div class="modal-actions" style="display: flex; gap: 1rem; justify-content: center;">
                         <button id="btn-confirm-restore" class="btn btn-primary">
-                            Tiếp Tục
+                            <i class="fa-solid fa-rotate-left"></i> Khôi phục
                         </button>
                         <button id="btn-reject-restore" class="btn btn-secondary"
                             style="color: var(--error); border-color: var(--error);">
-                            Xoá & Tạo Mới
+                            <i class="fa-solid fa-trash"></i> Ván Mới
                         </button>
                     </div>
                 </div>
@@ -305,9 +317,8 @@
             <div class="modal-content glass-card">
                 <button class="modal-close" id="btn-close-join" aria-label="Đóng"><i
                         class="fa-solid fa-xmark"></i></button>
-                <div class="modal-header centered">
-                    <div class="modal-icon"><i class="fa-solid fa-ticket"></i></div>
-                    <h3>Tham Gia Phòng</h3>
+                <div class="modal-header">
+                    <h3><i class="fa-solid fa-ticket"></i> Tham Gia Phòng</h3>
                     <p>Nhập mã phòng từ chủ xướng</p>
                 </div>
 
@@ -356,10 +367,7 @@
         <!-- Player List Modal -->
         <div id="player-list-modal" class="modal">
             <div class="modal-content glass-card">
-                <div class="modal-header centered">
-                    <div class="modal-icon"><i class="fa-solid fa-users"></i></div>
-                    <h3>Danh Sách Người Chơi</h3>
-                </div>
+                <h2>Danh sách người chơi</h2>
                 <div id="details-player-list" class="details-player-list">
                     <p class="empty-list-text">Chưa có người chơi nào.</p>
                 </div>
@@ -374,9 +382,8 @@
             <div class="modal-content glass-card">
                 <button class="modal-close" id="btn-close-settings" aria-label="Đóng"><i
                         class="fa-solid fa-xmark"></i></button>
-                <div class="modal-header centered">
-                    <div class="modal-icon"><i class="fa-solid fa-gear"></i></div>
-                    <h3>Cài Đặt</h3>
+                <div class="modal-header">
+                    <h3><i class="fa-solid fa-gear"></i> Cài Đặt</h3>
                 </div>
 
                 <div class="settings-content">
@@ -419,13 +426,6 @@
                                 <span class="slider"></span>
                             </label>
                         </div>
-                        <div class="setting-item">
-                            <span class="setting-label">Giọng Online (Hay hơn)</span>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="setting-online-tts">
-                                <span class="slider"></span>
-                            </label>
-                        </div>
                     </div>
 
                     <!-- System -->
@@ -460,11 +460,8 @@
             <div class="modal-content glass-card">
                 <button class="modal-close" id="btn-close-shout" aria-label="Đóng"><i
                         class="fa-solid fa-xmark"></i></button>
-                <div class="modal-header centered">
-                    <div class="modal-icon"><i class="fa-solid fa-bullhorn"></i></div>
-                    <h3>Hô Hào</h3>
-                    <p>Chọn câu muốn hét lên!</p>
-                </div>
+                <h3><i class="fa-solid fa-bullhorn"></i> Hô Hào</h3>
+                <p>Chọn câu muốn hét lên!</p>
                 <div class="shout-grid" id="shout-grid">
                     <!-- Shout buttons generated by JS -->
                 </div>
@@ -475,7 +472,6 @@
 
     <!-- Scripts -->
     <script src="confetti.js"></script>
-    <script src="google-tts.js"></script>
     <script src="tts.js"></script>
     <script src="audio.js"></script>
     <script src="peer.js"></script>

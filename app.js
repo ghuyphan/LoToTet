@@ -283,6 +283,7 @@ const Game = {
             settingThemeContainer: document.getElementById('setting-theme-container'),
             settingSfx: document.getElementById('setting-sfx'),
             settingTts: document.getElementById('setting-tts'),
+            settingOnlineTts: document.getElementById('setting-online-tts'),
             btnResetApp: document.getElementById('btn-reset-app'),
             emoteBar: document.getElementById('emote-bar'),
             emoteContainer: document.getElementById('emote-container'),
@@ -348,6 +349,11 @@ const Game = {
             this.elements.settingTts.addEventListener('change', (e) => {
                 this.ttsEnabled = e.target.checked;
                 this.saveSettings();
+            });
+        }
+        if (this.elements.settingOnlineTts) {
+            this.elements.settingOnlineTts.addEventListener('change', (e) => {
+                TTS.setUseOnlineTTS(e.target.checked);
             });
         }
         if (this.elements.btnResetApp) this.elements.btnResetApp.addEventListener('click', () => this.resetApp());
@@ -561,6 +567,11 @@ const Game = {
             if (!this.elements.detailsPlayerList) return;
             const connectedPlayers = Array.from(this.players.entries()).filter(([_, p]) => p.connected);
 
+            // Update badge with connected count
+            if (this.elements.playerCount) {
+                this.elements.playerCount.textContent = connectedPlayers.length;
+            }
+
             if (connectedPlayers.length === 0) {
                 this.elements.detailsPlayerList.innerHTML = '<p class="empty-list-text">Chưa có người chơi nào.</p>';
                 return;
@@ -721,7 +732,6 @@ const Game = {
             // CHANGED: Accept metadata in callback
             P2P.onPlayerJoin = (playerId, count, name, ticket, metadata) => {
                 const playerData = this.handlePlayerJoin(playerId, name, ticket, metadata);
-                this.elements.playerCount.textContent = this.players.size;
                 this.updatePlayerListDetails();
 
                 // Only announce real new joins or significant reconnects
@@ -742,7 +752,6 @@ const Game = {
                 if (this.players.has(playerId)) {
                     this.players.get(playerId).connected = false;
                 }
-                this.elements.playerCount.textContent = this.players.size;
                 this.updatePlayerListDetails();
             };
 
@@ -922,6 +931,11 @@ const Game = {
         } else {
             this.elements.roomCodeInput.focus();
         }
+
+        const savedName = localStorage.getItem('loto_username');
+        if (savedName) {
+            this.elements.playerNameInput.value = savedName;
+        }
     },
 
     hideJoinModal() {
@@ -950,7 +964,13 @@ const Game = {
 
             this._setupPlayerCallbacks();
 
-            const name = this.elements.playerNameInput.value.trim().substr(0, 20);
+            let name = this.elements.playerNameInput.value.trim().substr(0, 20);
+            if (!name) {
+                name = this.generateRandomName();
+                this.elements.playerNameInput.value = name;
+            }
+            localStorage.setItem('loto_username', name);
+
             this.playerSheets = [this.createSheetData()];
             this.currentTheme = ['blue', 'green', 'red', 'purple', 'yellow'][Math.floor(Math.random() * 5)];
             this.markedNumbers.clear();
@@ -1435,6 +1455,14 @@ const Game = {
         this.showToast('Bạn đang Đợi!', 'info');
     },
 
+    generateRandomName() {
+        const adjectives = ['Vui Vẻ', 'Ngáo Ngơ', 'Dễ Thương', 'Nhanh Trí', 'Siêu Quậy', 'Tí Hon', 'Khổng Lồ', 'Mũm Mĩm', 'Thông Thái', 'Lanh Chanh'];
+        const animals = ['Mèo Mun', 'Cún Con', 'Gấu Trúc', 'Vịt Bầu', 'Thỏ Trắng', 'Sóc Nâu', 'Heo Mọi', 'Gà Con', 'Chim Cánh Cụt', 'Cá Voi', 'Hổ Con', 'Sư Tử', 'Khỉ Con'];
+        const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+        const animal = animals[Math.floor(Math.random() * animals.length)];
+        return `${animal} ${adj}`;
+    },
+
     claimLoto() {
         const hasLocalWin = this.checkWinCondition();
         if (!hasLocalWin) {
@@ -1776,6 +1804,11 @@ const Game = {
         this.ttsEnabled = settings.tts !== false;
         if (this.elements.settingSfx) this.elements.settingSfx.checked = this.sfxEnabled;
         if (this.elements.settingTts) this.elements.settingTts.checked = this.ttsEnabled;
+        if (this.elements.settingOnlineTts) {
+            const useOnline = localStorage.getItem('loto_use_online_tts') === 'true';
+            this.elements.settingOnlineTts.checked = useOnline;
+            TTS.setUseOnlineTTS(useOnline);
+        }
         if (window.AudioManager) AudioManager.enabled = this.sfxEnabled;
     },
 
