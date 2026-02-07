@@ -2772,13 +2772,6 @@ body {
     font-weight: 700;
     font-size: 1.8rem;
     color: #fff;
-    /* Authentic Danmaku Outline (Sharp Black Stroke) */
-    text-shadow:
-        1px 0 0 #000, -1px 0 0 #000,
-        0 1px 0 #000, 0 -1px 0 #000,
-        1px 1px 0 #000, -1px -1px 0 #000,
-        1px -1px 0 #000, -1px 1px 0 #000,
-        0 2px 2px rgba(0, 0, 0, 0.3);
     /* Subtle drop shadow for depth */
     will-change: transform;
     opacity: 1;
