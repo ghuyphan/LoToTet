@@ -78,30 +78,31 @@
     --bg-secondary: #1e293b;
     --bg-card: #1e293b;
     --bg-card-hover: #334155;
-    
+
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --text-muted: #64748b;
     --text-white: #ffffff;
-    
+
     /* Adjust accents for dark mode */
     --coral-primary: #f87171;
-    --coral-dark: #ef4444; 
+    --coral-dark: #ef4444;
     --gold-primary: #fbbf24;
     --gold-dark: #d97706;
-    
+
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
     --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
-    
+
     /* Specific overrides for Glassmorphism in Dark Mode */
     --glass-border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 [data-theme="dark"] .glass-card {
     border: var(--glass-border);
-    background: rgba(30, 41, 59, 0.7); /* Slightly transparent */
+    background: rgba(30, 41, 59, 0.7);
+    /* Slightly transparent */
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
 }
@@ -119,7 +120,8 @@
 }
 
 [data-theme="dark"] .ticket-cell {
-    background-color: #f1f5f9; /* Keep cells light for contrast with text, or make them dark? Authentic is usually white paper */
+    background-color: #f1f5f9;
+    /* Keep cells light for contrast with text, or make them dark? Authentic is usually white paper */
     /* Let's keep cells white-ish for contrast as per standard Loto */
 }
 
@@ -566,10 +568,7 @@ body {
     /* Allow badge to overlap */
 }
 
-.btn-icon-only {
-    position: relative;
-    /* Ensure badges are positioned correctly */
-}
+
 
 .badge {
     position: absolute;
@@ -2563,6 +2562,7 @@ body {
     text-align: center;
     padding: var(--space-sm);
 }
+
 /* =============================================
    SETTINGS MODAL & THEME SELECTOR
    ============================================= */
@@ -2654,7 +2654,8 @@ body {
 }
 
 .theme-swatch.active::after {
-    content: '\f00c'; /* fa-check */
+    content: '\f00c';
+    /* fa-check */
     font-family: "Font Awesome 6 Free";
     font-weight: 900;
     color: white;
@@ -2663,34 +2664,55 @@ body {
     left: 50%;
     transform: translate(-50%, -50%);
     font-size: 0.8rem;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 /* Swatch Colors */
-.swatch-blue { background: #0056b3; }
-.swatch-green { background: #008040; }
-.swatch-red { background: #d63031; }
-.swatch-purple { background: #6c5ce7; }
-.swatch-yellow { background: #d35400; }
+.swatch-blue {
+    background: #0056b3;
+}
+
+.swatch-green {
+    background: #008040;
+}
+
+.swatch-red {
+    background: #d63031;
+}
+
+.swatch-purple {
+    background: #6c5ce7;
+}
+
+.swatch-yellow {
+    background: #d35400;
+}
 
 /* Mobile Polish Improvements */
 @media (max-width: 480px) {
+
     /* Larger Touch Targets */
-    .btn, .btn-icon-only, .btn-settings, .toggle-switch {
-        min-height: 44px; /* Apple Human Interface Guidelines */
+    .btn,
+    .btn-icon-only,
+    .btn-settings,
+    .toggle-switch {
+        min-height: 44px;
+        /* Apple Human Interface Guidelines */
     }
-    
+
     .btn-icon-only {
         min-width: 44px;
     }
-    
+
     /* Better spacing on small screens */
-    .host-layout, .player-layout {
+    .host-layout,
+    .player-layout {
         gap: var(--space-md);
     }
-    
+
     /* Settings padding */
     .settings-group {
-        padding-bottom: var(--space-lg); /* More separation on mobile */
+        padding-bottom: var(--space-lg);
+        /* More separation on mobile */
     }
 }
