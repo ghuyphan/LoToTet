@@ -2468,6 +2468,10 @@ body {
     display: flex;
     flex-direction: column;
     gap: var(--space-xs);
+    max-height: 200px;
+    overflow-y: auto;
+    padding-right: var(--space-xs);
+    /* Add padding for scrollbar */
 }
 
 .waiting-item {
@@ -2513,9 +2517,9 @@ body {
 }
 
 #btn-copy-code {
-    width: 32px;
-    height: 32px;
-    font-size: 1rem;
+    width: 28px;
+    height: 28px;
+    font-size: 0.9rem;
     padding: 0;
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.05);
@@ -2699,8 +2703,7 @@ body {
     /* Larger Touch Targets */
     .btn,
     .btn-icon-only,
-    .btn-settings,
-    .toggle-switch {
+    .btn-settings {
         min-height: 44px;
         /* Apple Human Interface Guidelines */
     }
@@ -2720,4 +2723,118 @@ body {
         padding-bottom: var(--space-lg);
         /* More separation on mobile */
     }
+
+    /* Reduce component sizes on mobile */
+    .btn-large {
+        min-height: 90px;
+        padding: var(--space-md);
+    }
+
+    .btn-large .btn-icon {
+        font-size: 1.75rem;
+    }
+
+    .btn-large .btn-text {
+        font-size: var(--font-size-md);
+    }
+
+    .btn-draw,
+    .btn-loto {
+        padding: var(--space-md);
+        font-size: var(--font-size-lg);
+    }
+
+    .screen {
+        padding: var(--space-md);
+        padding-bottom: var(--space-xl);
+    }
+
+    .home-content {
+        padding: 0 var(--space-sm);
+    }
+}
+
+/* =============================================
+   DANMAKU (QUICK SHOUTS)
+   ============================================= */
+.danmaku-container {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    overflow: hidden;
+    /* Ensure touches pass through */
+}
+
+.danmaku-item {
+    position: absolute;
+    white-space: nowrap;
+    font-weight: 700;
+    font-size: 1.8rem;
+    color: #fff;
+    /* Authentic Danmaku Outline (Sharp Black Stroke) */
+    text-shadow:
+        1px 0 0 #000, -1px 0 0 #000,
+        0 1px 0 #000, 0 -1px 0 #000,
+        1px 1px 0 #000, -1px -1px 0 #000,
+        1px -1px 0 #000, -1px 1px 0 #000,
+        0 2px 2px rgba(0, 0, 0, 0.3);
+    /* Subtle drop shadow for depth */
+    will-change: transform;
+    opacity: 1;
+    font-family: var(--font-family);
+    /* Standard sans-serif like Bilibili */
+    letter-spacing: 0.5px;
+    pointer-events: none;
+    z-index: 9999;
+}
+
+.danmaku-item.self {
+    z-index: 10001;
+    /* Slightly heavier stroke for self to pop */
+    text-shadow:
+        1.5px 0 0 #000, -1.5px 0 0 #000,
+        0 1.5px 0 #000, 0 -1.5px 0 #000,
+        1.5px 1.5px 0 #000, -1.5px -1.5px 0 #000,
+        1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000;
+}
+
+@keyframes flyAcross {
+    from {
+        transform: translateX(100vw);
+    }
+
+    to {
+        transform: translateX(-100%);
+    }
+}
+
+/* Shout Menu (Bottom Sheet style) */
+#shout-modal .modal-content {
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.shout-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-md);
+    margin-top: var(--space-md);
+}
+
+.btn-shout-preset {
+    padding: var(--space-md);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+}
+
+.btn-shout-preset:active {
+    transform: scale(0.95);
+    background: var(--primary-light);
 }

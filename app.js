@@ -25,7 +25,14 @@ const Game = {
     isScanning: false, // Control QR scanner loop
     isMuted: false, // Player mute state
     autoDrawEnabled: false, // Host auto-draw state
+    // Game logic constraints
+    isDrawing: false, // Lock to prevent rapid draw clicks
+    isJoining: false, // Lock to prevent multiple join attempts
+    isScanning: false, // Control QR scanner loop
+    isMuted: false, // Player mute state
+    autoDrawEnabled: false, // Host auto-draw state
     autoDrawTimer: null, // Auto-draw interval timer
+    wakeLock: null, // Screen Wake Lock
 
     // User Preferences (Persisted)
     isDarkMode: false,
@@ -38,6 +45,14 @@ const Game = {
 
     // Initialize game
     init() {
+        // Danmaku Presets
+        this.shoutPresets = [
+            'Cay thế! 🌶️', 'Nhanh lên! ⏱️', 'Sắp KINH! 😱',
+            'Hù! 👻', 'Số 35 đâu? 🐐', 'Alo alo 📞',
+            'Run quá 🥶', 'Đen thôi 🌚', 'Nhà cái lừa! 🤥',
+            'Chờ mãi! 💤', 'Ra số đẹp đi! ✨', 'Mãi keo 🤞'
+        ];
+
         this.cacheElements();
         this.setupEventListeners();
         this.generateNumbersGrid('numbers-grid');
@@ -47,6 +62,7 @@ const Game = {
         this.generateNumbersGrid('player-numbers-grid', true);
         this.resetRemainingNumbers();
         this.loadSettings(); // Load saved settings
+        this.initShoutMenu(); // Initialize Shout Menu
         this.setupTTSControls();
         this.setupBeforeUnload();
 
@@ -84,6 +100,14 @@ const Game = {
             this.playerSheets = session.playerSheets || (session.playerTicket ? [session.playerTicket] : []);
             this.playerTicket = null; // Deprecated
             this.playerSheets = session.playerSheets || (session.playerTicket ? [session.playerTicket] : []);
+
+            // Validate structure
+            if (!Array.isArray(this.playerSheets) || this.playerSheets.length === 0) {
+                console.warn('[Session] Invalid player sheets, clearing session.');
+                P2P.clearSession();
+                return false;
+            }
+
             this.playerTicket = null; // Deprecated
             this.currentTheme = this.preferredTheme || 'blue';
             this.markedNumbers = new Set();
@@ -193,6 +217,10 @@ const Game = {
             }
         };
 
+        P2P.onShout = (text, senderId) => {
+            this.renderDanmaku(text, false);
+        };
+
         P2P.onNumberDrawn = (number, text) => {
             if (!this.gameStarted) {
                 this.gameStarted = true;
@@ -293,6 +321,13 @@ const Game = {
             autoDrawToggle: document.getElementById('auto-draw-toggle'),
             autoDrawInterval: document.getElementById('auto-draw-interval'),
             autoDrawSpeedContainer: document.getElementById('auto-draw-speed-container'),
+
+            // Shout UI
+            btnOpenShout: document.getElementById('btn-open-shout'),
+            btnCloseShout: document.getElementById('btn-close-shout'),
+            shoutModal: document.getElementById('shout-modal'),
+            shoutGrid: document.getElementById('shout-grid'),
+            danmakuContainer: document.getElementById('danmaku-container'),
 
             // Settings Elements
             settingsModal: document.getElementById('settings-modal'),
@@ -437,6 +472,19 @@ const Game = {
                 this.sendEmote(emoji);
             });
         });
+
+        // Shout Menu
+        if (this.elements.btnOpenShout) {
+            this.elements.btnOpenShout.addEventListener('click', () => {
+                this.elements.shoutModal.classList.add('active');
+            });
+        }
+        if (this.elements.btnCloseShout) {
+            this.elements.btnCloseShout.addEventListener('click', () => {
+                this.elements.shoutModal.classList.remove('active');
+            });
+        }
+
 
         // Player List Modal (Host)
         if (this.elements.btnViewPlayers) {
@@ -620,6 +668,13 @@ const Game = {
 
     // Go back to home
     goHome() {
+        // HOST EXIT PROTECTION
+        if (P2P.isHost && this.players.size > 0) {
+            if (!confirm('Bạn đang là chủ phòng. Nếu thoát, phòng sẽ bị huỷ và tất cả người chơi sẽ bị ngắt kết nối. Bạn chắc chắn muốn thoát?')) {
+                return;
+            }
+        }
+
         // Stop auto-draw if active
         if (this.autoDrawTimer) {
             this.stopAutoDraw();
@@ -632,6 +687,7 @@ const Game = {
         this.players.clear();
         this.waitingPlayers.clear(); // Clear waiting players
         if (this.elements.waitingListSection) this.elements.waitingListSection.classList.add('hidden');
+        this.releaseWakeLock(); // Release screen lock
         this.showScreen('home-screen');
     },
 
@@ -702,6 +758,34 @@ const Game = {
         });
     },
 
+    // Wake Lock API (Keep screen on)
+    async requestWakeLock() {
+        if ('wakeLock' in navigator) {
+            try {
+                this.wakeLock = await navigator.wakeLock.request('screen');
+                console.log('Screen Wake Lock active');
+
+                this.wakeLock.addEventListener('release', () => {
+                    console.log('Screen Wake Lock released');
+                    this.wakeLock = null;
+                });
+            } catch (err) {
+                console.warn(`${err.name}, ${err.message}`);
+            }
+        }
+    },
+
+    async releaseWakeLock() {
+        if (this.wakeLock) {
+            try {
+                await this.wakeLock.release();
+                this.wakeLock = null;
+            } catch (err) {
+                console.warn(`${err.name}, ${err.message}`);
+            }
+        }
+    },
+
     // =============================================
     // HOST FUNCTIONS
     // =============================================
@@ -740,17 +824,61 @@ const Game = {
                 this.updatePlayerListDetails();
             };
 
+            // Batching winners
+            let pendingWinners = [];
+            let winProcessingTimeout = null;
+
             P2P.onWinClaim = (playerId) => {
-                // Verify win and announce
+                // Verify win
                 if (this.verifyWin(playerId)) {
+                    // STOP Auto-Draw immediately on first valid claim
+                    if (this.autoDrawEnabled) {
+                        this.stopAutoDraw();
+                        this.elements.autoDrawToggle.checked = false;
+                    }
+
                     const player = this.players.get(playerId);
-                    const listName = player ? (player.name || 'Người chơi') : 'Người chơi';
-                    P2P.confirmWin(listName);
-                    this.showWin(listName);
+                    const playerName = player ? (player.name || `Người chơi ${playerId.substr(0, 4)}`) : 'Người chơi';
+
+                    // Add to pending batch if not already there
+                    if (!pendingWinners.includes(playerName)) {
+                        pendingWinners.push(playerName);
+                    }
+
+                    // Schedule announcement if not already scheduled
+                    if (!winProcessingTimeout) {
+                        this.showToast('Có người Kinh! Đang chờ thêm người thắng cuộc...', 'success');
+
+                        winProcessingTimeout = setTimeout(() => {
+                            // Format combined winner name
+                            let combinedName = '';
+                            if (pendingWinners.length === 1) {
+                                combinedName = pendingWinners[0];
+                            } else if (pendingWinners.length === 2) {
+                                combinedName = `${pendingWinners[0]} và ${pendingWinners[1]}`;
+                            } else {
+                                const last = pendingWinners.pop();
+                                combinedName = `${pendingWinners.join(', ')} và ${last}`;
+                            }
+
+                            // Announce
+                            P2P.confirmWin(combinedName);
+                            this.showWin(combinedName);
+
+                            // Reset
+                            pendingWinners = [];
+                            winProcessingTimeout = null;
+                        }, 2000); // 2 second grace period
+                    }
                 } else {
                     // Notify the player their win was rejected
                     console.warn(`Invalid win claim from ${playerId}`);
                     P2P.rejectWin(playerId);
+
+                    // FALSE WIN BROADCAST (PUBLIC SHAME)
+                    const player = this.players.get(playerId);
+                    const name = player ? player.name : 'Ai đó';
+                    P2P.broadcastToast(`⚠️ ${name} đã KINH nhầm! Phạt đi! 🍺`, 'error');
                 }
             };
 
@@ -779,7 +907,9 @@ const Game = {
             this.gameStarted = false; // Game starts only when first number is drawn
 
             this.showScreen('host-screen');
+            this.showScreen('host-screen');
             this.showToast('Phòng đã sẵn sàng!', 'success');
+            this.requestWakeLock(); // Keep screen on for Host
 
         } catch (error) {
             console.error('Failed to start as host:', error);
@@ -898,6 +1028,11 @@ const Game = {
         if (playerRhymeElement) {
             playerRhymeElement.textContent = rhyme;
         }
+
+        // Ensure Kinh button is enabled when numbers are being drawn
+        if (this.elements.btnLoto) {
+            this.elements.btnLoto.disabled = false;
+        }
     },
 
     // Mark number as called in grid
@@ -978,6 +1113,7 @@ const Game = {
 
             this.showToast('Đang đăng ký vé với chủ xướng...', 'info');
             window.history.replaceState({}, document.title, window.location.pathname);
+            this.requestWakeLock(); // Keep screen on for Player
 
         } catch (error) {
             console.error('Failed to join room:', error);
@@ -1196,12 +1332,31 @@ const Game = {
             sheets = [this.createSheetData()];
         }
 
+        // Handle Duplicate Names
+        let finalName = name;
+        let counter = 2;
+        let isDuplicate = true;
+
+        while (isDuplicate) {
+            isDuplicate = false;
+            for (const [id, p] of this.players) {
+                if (p.name === finalName && id !== playerId) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            if (isDuplicate) {
+                finalName = `${name} (${counter})`;
+                counter++;
+            }
+        }
+
         this.players.set(playerId, {
-            name: name,
+            name: finalName,
             sheets: sheets, // Store as sheets
             connected: true
         });
-        return { sheets, name };
+        return { sheets, name: finalName };
     },
 
     // Handle ticket update from player (Host Side)
@@ -1467,8 +1622,11 @@ const Game = {
         for (let s = 0; s < this.playerSheets.length; s++) {
             const sheetData = this.playerSheets[s];
 
+            if (!sheetData) continue;
+
             for (let t = 0; t < 3; t++) {
                 const ticketData = sheetData[t];
+                if (!ticketData) continue;
 
                 for (let r = 0; r < 3; r++) {
                     const rowNumbers = ticketData[r].filter(n => n !== null);
@@ -1519,8 +1677,9 @@ const Game = {
             }
         }
 
-        this.elements.btnLoto.disabled = !hasWin;
-        if (!hasWin) this.elements.btnLoto.textContent = '🎉 KINH!';
+        this.elements.btnLoto.classList.toggle('highlight', hasWin);
+        // Note: We no longer disable the button here to allow "Risky/False" claims.
+        // Button state is managed by game start/end.
 
         return hasWin;
     },
@@ -1533,13 +1692,17 @@ const Game = {
     },
 
     claimLoto() {
-        if (!this.checkWinCondition()) {
-            this.showToast('Bạn chưa đủ điều kiện để Kinh!', 'error');
-            return;
+        const hasLocalWin = this.checkWinCondition();
+
+        if (!hasLocalWin) {
+            // Warn user about false claim
+            if (!confirm('⚠️ CẢNH BÁO: Vé của bạn CHƯA ĐỦ điều kiện thắng.\n\nNếu bạn cố tình báo "Kinh" sai, bạn sẽ bị bêu tên phạt trước toàn phòng.\n\nBạn có chắc chắn muốn "Kinh" không?')) {
+                return;
+            }
         }
 
-        if (this._lastClaimTime && Date.now() - this._lastClaimTime < 10000) {
-            this.showToast('Vui lòng đợi 10 giây trước khi Kinh lại!', 'warning');
+        if (this._lastClaimTime && Date.now() - this._lastClaimTime < 5000) {
+            this.showToast('Từ từ thôi! Đợi 5 giây nữa.', 'warning');
             return;
         }
         this._lastClaimTime = Date.now();
@@ -1589,6 +1752,27 @@ const Game = {
 
         if (this.ttsEnabled) {
             TTS.announceWinner(winnerName);
+        }
+
+        // PLAY AGAIN BUTTON (HOST ONLY)
+        if (P2P.isHost) {
+            const btnContainer = this.elements.winModal.querySelector('.modal-content');
+            // Check if button already exists to prevent duplicates
+            let btnPlayAgain = document.getElementById('btn-play-again');
+            if (!btnPlayAgain) {
+                btnPlayAgain = document.createElement('button');
+                btnPlayAgain.id = 'btn-play-again';
+                btnPlayAgain.className = 'btn-large btn-primary';
+                btnPlayAgain.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> Ván Mới';
+                btnPlayAgain.style.marginTop = '1rem';
+                btnPlayAgain.onclick = () => {
+                    if (confirm('Bắt đầu ván mới? Tất cả số đã gọi sẽ bị xoá.')) {
+                        this.resetGame();
+                    }
+                };
+                // Append after Winner Name
+                this.elements.winnerName.parentElement.appendChild(btnPlayAgain);
+            }
         }
     },
 
@@ -1644,11 +1828,15 @@ const Game = {
             this.elements.btnNewTicket.title = "Đã khoá vé (Ván đang chơi)";
             this.elements.btnAddSheet.disabled = true;
             this.elements.btnAddSheet.title = "Không thể thêm tờ khi đang chơi";
+            // Enable Kinh button when game starts
+            this.elements.btnLoto.disabled = false;
         } else {
             this.elements.btnNewTicket.disabled = false;
             this.elements.btnNewTicket.title = "Đổi tất cả vé";
             this.elements.btnAddSheet.disabled = false;
             this.elements.btnAddSheet.title = "Thêm tờ mới";
+            // Disable Kinh button if game not started
+            this.elements.btnLoto.disabled = true;
         }
 
         calledNumbers.forEach(num => {
@@ -1709,6 +1897,135 @@ const Game = {
 
         // Clear Emotes
         if (this.elements.emoteContainer) this.elements.emoteContainer.innerHTML = '';
+        if (this.elements.emoteContainer) this.elements.emoteContainer.innerHTML = '';
+    },
+
+    // Soft Reset for "Play Again" (Keeps connections)
+    resetGame() {
+        this.calledNumbers.clear();
+        this.markedNumbers.clear();
+        this.announcedRows.clear();
+        this.gameStarted = false;
+        this.isDrawing = false;
+        this.resetRemainingNumbers();
+
+        // Reset checking state
+        this._lastClaimTime = 0;
+        this._lastWaitAnnounce = 0;
+
+        // UI Resets
+        this.hideWinModal();
+        if (this.elements.numbersGrid) {
+            document.querySelectorAll('.number-cell').forEach(c => c.classList.remove('called'));
+        }
+        if (this.elements.playerNumbersGrid) {
+            document.querySelectorAll('.number-cell').forEach(c => c.classList.remove('called'));
+        }
+        // Unmark player tickets
+        document.querySelectorAll('.ticket-cell').forEach(c => {
+            c.classList.remove('marked', 'winning-row', 'waiting-row', 'invalid-mark');
+        });
+
+        if (this.elements.calledCount) this.elements.calledCount.textContent = '0';
+        if (this.elements.currentNumber) {
+            this.elements.currentNumber.querySelector('span').textContent = '?';
+            this.elements.currentNumber.classList.remove('new-number');
+        }
+        if (this.elements.numberText) this.elements.numberText.textContent = 'Bấm để bắt đầu';
+
+        if (this.elements.btnDraw) {
+            this.elements.btnDraw.disabled = false;
+        }
+        if (this.elements.btnDraw) {
+            this.elements.btnDraw.disabled = false;
+        }
+        if (this.elements.btnLoto) {
+            this.elements.btnLoto.disabled = true; // Disable until game starts
+            this.elements.btnLoto.textContent = '🎉 KINH!';
+            this.elements.btnLoto.classList.remove('highlight');
+        }
+
+        // Clear Waiting List
+        this.waitingPlayers.clear();
+        if (this.elements.waitingListSection) this.elements.waitingListSection.classList.add('hidden');
+        if (this.elements.waitingList) this.elements.waitingList.innerHTML = '';
+
+        // Broadcast to players
+        if (P2P.isHost) {
+            P2P.broadcastReset();
+            this.showToast('Đã bắt đầu ván mới!', 'success');
+        } else {
+            this.showToast('Chủ phòng đã bắt đầu ván mới!', 'info');
+        }
+    },
+
+    // Initialize Shout Menu
+    initShoutMenu() {
+        if (!this.elements.shoutGrid) return;
+
+        this.elements.shoutGrid.innerHTML = '';
+        this.shoutPresets.forEach(text => {
+            const btn = document.createElement('button');
+            btn.className = 'btn-shout-preset';
+            btn.textContent = text;
+            btn.onclick = () => {
+                this.sendShout(text);
+                this.elements.shoutModal.classList.remove('active');
+            };
+            this.elements.shoutGrid.appendChild(btn);
+        });
+    },
+
+    sendShout(text) {
+        // Show locally
+        this.renderDanmaku(text, true); // true = self
+        // Send to P2P
+        P2P.sendShout(text);
+    },
+
+    renderDanmaku(text, isSelf = false) {
+        if (!this.elements.danmakuContainer) return;
+
+        const el = document.createElement('div');
+        el.className = 'danmaku-item';
+        el.textContent = text;
+
+        // Randomize position
+        const top = 10 + Math.random() * 80;
+        const duration = 4 + Math.random() * 4; // 4-8s
+        const fontSize = 1.2 + Math.random() * 0.8; // 1.2 - 2rem
+
+        el.style.top = `${top}%`;
+        el.style.animation = `flyAcross ${duration}s linear forwards`;
+        el.style.fontSize = `${fontSize}rem`;
+
+        // Random Bilibili-style colors
+        const colors = [
+            '#FFFFFF', // White (Most common)
+            '#FE0302', // Red
+            '#FF7204', // Orange
+            '#FFAA02', // Yellow
+            '#FFD302', // Gold
+            '#CC0273', // Magenta
+            '#00CD00', // Green
+            '#00FFFF', // Cyan
+            '#33D8F0', // Light Blue
+            '#89D5FF', // Sky Blue
+        ];
+        // Weight white heavier (optional) or just random
+        const randomColor = colors[Math.floor(Math.random() * colors.length)];
+        el.style.color = randomColor;
+
+        if (isSelf) {
+            el.classList.add('self');
+        }
+
+        this.elements.danmakuContainer.appendChild(el);
+
+        // Cleanup
+        setTimeout(() => {
+            el.remove();
+        }, duration * 1000);
     },
 
     async startQRScanner() {

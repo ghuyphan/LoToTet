@@ -68,6 +68,7 @@ const P2P = {
     onWinRejected: null,
     onWaitSignal: null, // New: Handler for wait signals
     onEmote: null, // New: Handler for receiving emotes
+    onShout: null, // New: Handler for shouts (Danmaku)
     onError: null,
     onReconnecting: null, // New: Called when attempting to reconnect
     onReconnected: null,  // New: Called when successfully reconnected
@@ -534,7 +535,7 @@ const P2P = {
 
             case 'gameReset':
                 if (window.Game) {
-                    Game.reset();
+                    Game.resetGame();
                 }
                 break;
 
@@ -557,6 +558,16 @@ const P2P = {
                 // If Host, propagate to others
                 if (this.isHost) {
                     this.broadcastEmote(data.emoji, conn ? conn.peer : data.senderId);
+                }
+                break;
+
+            case 'shout':
+                if (this.onShout) {
+                    this.onShout(data.text, data.senderId);
+                }
+                // If Host, propagate to others
+                if (this.isHost) {
+                    this.broadcastShout(data.text, conn ? conn.peer : data.senderId);
                 }
                 break;
         }
@@ -647,6 +658,28 @@ const P2P = {
         });
     },
 
+    // Broadcast reset game (Host -> All Players)
+    broadcastReset() {
+        if (!this.isHost) return;
+        const message = { type: 'gameReset' };
+        this.connections.forEach(conn => {
+            if (conn.open) conn.send(message);
+        });
+    },
+
+    // Broadcast toast (Host -> All Players)
+    broadcastToast(text, type = 'info') {
+        if (!this.isHost) return;
+        const message = {
+            type: 'toast',
+            message: text,
+            type: type
+        };
+        this.connections.forEach(conn => {
+            if (conn.open) conn.send(message);
+        });
+    },
+
     // Broadcast emote (Host -> All Players)
     broadcastEmote(emoji, senderId) {
         if (!this.isHost) return;
@@ -677,6 +710,36 @@ const P2P = {
             this.hostConnection.send({
                 type: 'emote',
                 emoji: emoji,
+                senderId: this.peer.id
+            });
+        }
+    },
+
+    // Broadcast shout (Host -> All Players)
+    broadcastShout(text, senderId) {
+        if (!this.isHost) return;
+
+        const message = {
+            type: 'shout',
+            text: text,
+            senderId: senderId
+        };
+
+        this.connections.forEach((conn) => {
+            if (conn.open && conn.peer !== senderId) {
+                conn.send(message);
+            }
+        });
+    },
+
+    // Send shout (Player -> Host)
+    sendShout(text) {
+        if (this.isHost) {
+            this.broadcastShout(text, 'HOST');
+        } else if (this.hostConnection) {
+            this.hostConnection.send({
+                type: 'shout',
+                text: text,
                 senderId: this.peer.id
             });
         }
