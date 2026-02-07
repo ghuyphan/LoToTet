@@ -27,6 +27,12 @@ const Game = {
     autoDrawEnabled: false, // Host auto-draw state
     autoDrawTimer: null, // Auto-draw interval timer
 
+    // User Preferences (Persisted)
+    isDarkMode: false,
+    preferredTheme: 'blue',
+    sfxEnabled: true,
+    ttsEnabled: true,
+
     // DOM Elements cache
     elements: {},
 
@@ -37,6 +43,10 @@ const Game = {
         this.generateNumbersGrid('numbers-grid');
         this.generateNumbersGrid('player-numbers-grid', true);
         this.resetRemainingNumbers();
+        this.generateNumbersGrid('numbers-grid');
+        this.generateNumbersGrid('player-numbers-grid', true);
+        this.resetRemainingNumbers();
+        this.loadSettings(); // Load saved settings
         this.setupTTSControls();
         this.setupBeforeUnload();
 
@@ -73,7 +83,10 @@ const Game = {
             // Restore local state from session
             this.playerSheets = session.playerSheets || (session.playerTicket ? [session.playerTicket] : []);
             this.playerTicket = null; // Deprecated
-            this.currentTheme = ['blue', 'green', 'red', 'purple', 'yellow'][Math.floor(Math.random() * 5)];
+            this.playerSheets = session.playerSheets || (session.playerTicket ? [session.playerTicket] : []);
+            this.playerTicket = null; // Deprecated
+            this.currentTheme = this.preferredTheme || 'blue';
+            this.markedNumbers = new Set();
             this.markedNumbers = new Set();
             this.announcedRows.clear();
             this.renderPlayerTicket();
@@ -193,7 +206,11 @@ const Game = {
             this.updateCurrentNumber(number);
             this.markNumberCalled(number);
             this.checkWinCondition();
-            TTS.announceNumber(number);
+            this.checkWinCondition();
+
+            if (this.ttsEnabled) {
+                TTS.announceNumber(number);
+            }
 
             // Update saved session with new game state
             P2P.saveSession();
@@ -273,10 +290,23 @@ const Game = {
             // Mute button (Player)
             btnMute: document.getElementById('btn-mute'),
 
-            // Auto-draw (Host)
             autoDrawToggle: document.getElementById('auto-draw-toggle'),
             autoDrawInterval: document.getElementById('auto-draw-interval'),
             autoDrawSpeedContainer: document.getElementById('auto-draw-speed-container'),
+
+            // Settings Elements
+            settingsModal: document.getElementById('settings-modal'),
+            btnCloseSettings: document.getElementById('btn-close-settings'),
+            btnSettingsHome: document.getElementById('btn-settings-home'),
+            btnSettingsHost: document.getElementById('btn-settings-host'),
+            btnSettingsPlayer: document.getElementById('btn-settings-player'),
+
+            // Settings Inputs
+            settingDarkMode: document.getElementById('setting-dark-mode'),
+            settingThemeContainer: document.getElementById('setting-theme-container'),
+            settingSfx: document.getElementById('setting-sfx'),
+            settingTts: document.getElementById('setting-tts'),
+            btnResetApp: document.getElementById('btn-reset-app'),
 
             // Emotes
             emoteBar: document.getElementById('emote-bar'),
@@ -335,10 +365,56 @@ const Game = {
             if (e.target === this.elements.winModal) this.hideWinModal();
         });
 
-        // Mute button (Player)
-        if (this.elements.btnMute) {
-            this.elements.btnMute.addEventListener('click', () => this.toggleMute());
+
+
+        // Settings Modal Handlers
+        const openSettings = () => this.openSettings();
+        if (this.elements.btnSettingsHome) this.elements.btnSettingsHome.addEventListener('click', openSettings);
+        if (this.elements.btnSettingsHost) this.elements.btnSettingsHost.addEventListener('click', openSettings);
+        if (this.elements.btnSettingsPlayer) this.elements.btnSettingsPlayer.addEventListener('click', openSettings);
+
+        if (this.elements.btnCloseSettings) {
+            this.elements.btnCloseSettings.addEventListener('click', () => this.closeSettings());
         }
+        if (this.elements.settingsModal) {
+            this.elements.settingsModal.addEventListener('click', (e) => {
+                if (e.target === this.elements.settingsModal) this.closeSettings();
+            });
+        }
+
+        // Settings Inputs Handlers
+        if (this.elements.settingDarkMode) {
+            this.elements.settingDarkMode.addEventListener('change', (e) => this.toggleDarkMode(e.target.checked));
+        }
+
+        if (this.elements.settingSfx) {
+            this.elements.settingSfx.addEventListener('change', (e) => {
+                this.sfxEnabled = e.target.checked;
+                if (window.AudioManager) AudioManager.enabled = this.sfxEnabled;
+                this.saveSettings();
+            });
+        }
+        if (this.elements.settingTts) {
+            this.elements.settingTts.addEventListener('change', (e) => {
+                this.ttsEnabled = e.target.checked;
+                this.saveSettings();
+            });
+        }
+        if (this.elements.btnResetApp) {
+            this.elements.btnResetApp.addEventListener('click', () => this.resetApp());
+        }
+
+        // Theme Selection Handlers
+        if (this.elements.settingThemeContainer) {
+            this.elements.settingThemeContainer.querySelectorAll('.theme-swatch').forEach(swatch => {
+                swatch.addEventListener('click', () => {
+                    const theme = swatch.dataset.theme.replace('theme-', '');
+                    this.setTheme(theme);
+                });
+            });
+        }
+
+        /* Removed old Mute button handler as it's now in Settings */
 
         // Auto-draw toggle (Host)
         if (this.elements.autoDrawToggle) {
@@ -578,7 +654,17 @@ const Game = {
 
             const item = document.createElement('div');
             item.className = 'waiting-item';
-            item.innerHTML = `<i class="fa-solid fa-flag"></i> <span class="waiting-name">${name}</span>`;
+
+            const icon = document.createElement('i');
+            icon.className = 'fa-solid fa-flag';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'waiting-name';
+            nameSpan.textContent = name;
+
+            item.appendChild(icon);
+            item.appendChild(document.createTextNode(' '));
+            item.appendChild(nameSpan);
             this.elements.waitingList.appendChild(item);
         });
     },
@@ -601,7 +687,16 @@ const Game = {
             item.className = 'details-player-item';
 
             const name = player.name || `Người chơi ${id.substr(0, 4)}`;
-            item.innerHTML = `<i class="fa-solid fa-user"></i> <span>${name}</span>`;
+
+            const icon = document.createElement('i');
+            icon.className = 'fa-solid fa-user';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = name;
+
+            item.appendChild(icon);
+            item.appendChild(document.createTextNode(' '));
+            item.appendChild(nameSpan);
 
             this.elements.detailsPlayerList.appendChild(item);
         });
@@ -1492,7 +1587,9 @@ const Game = {
         // New Effects
         if (window.AudioManager) AudioManager.playWin();
 
-        TTS.announceWinner(winnerName);
+        if (this.ttsEnabled) {
+            TTS.announceWinner(winnerName);
+        }
     },
 
     hideWinModal() {
@@ -1759,6 +1856,100 @@ const Game = {
                 toast.remove();
             }
         }, 400);
+    },
+
+    // =============================================
+    // SETTINGS METHODS
+    // =============================================
+
+    loadSettings() {
+        const settings = JSON.parse(localStorage.getItem('loto_settings') || '{}');
+
+        // Apply Dark Mode
+        this.isDarkMode = settings.darkMode === true;
+        if (this.isDarkMode) {
+            document.body.setAttribute('data-theme', 'dark');
+            if (this.elements.settingDarkMode) this.elements.settingDarkMode.checked = true;
+        } else {
+            document.body.removeAttribute('data-theme');
+            if (this.elements.settingDarkMode) this.elements.settingDarkMode.checked = false;
+        }
+
+        // Apply Theme
+        this.preferredTheme = settings.theme || 'blue';
+        this.currentTheme = this.preferredTheme;
+        this.updateThemeUI();
+
+        // Apply Audio settings
+        this.sfxEnabled = settings.sfx !== false; // Default true
+        this.ttsEnabled = settings.tts !== false; // Default true
+
+        if (this.elements.settingSfx) this.elements.settingSfx.checked = this.sfxEnabled;
+        if (this.elements.settingTts) this.elements.settingTts.checked = this.ttsEnabled;
+
+        // Sync with global managers
+        if (window.AudioManager) AudioManager.enabled = this.sfxEnabled;
+    },
+
+    saveSettings() {
+        const settings = {
+            darkMode: this.isDarkMode,
+            theme: this.preferredTheme,
+            sfx: this.sfxEnabled,
+            tts: this.ttsEnabled
+        };
+        localStorage.setItem('loto_settings', JSON.stringify(settings));
+    },
+
+    toggleDarkMode(enabled) {
+        this.isDarkMode = enabled;
+        if (this.isDarkMode) {
+            document.body.setAttribute('data-theme', 'dark');
+        } else {
+            document.body.removeAttribute('data-theme');
+        }
+        this.saveSettings();
+    },
+
+    setTheme(theme) {
+        this.preferredTheme = theme;
+        this.currentTheme = theme;
+        this.updateThemeUI();
+        this.saveSettings();
+
+        // Re-render ticket if active
+        if (this.playerSheets && this.playerSheets.length > 0) {
+            this.renderPlayerTicket();
+        }
+    },
+
+    updateThemeUI() {
+        if (!this.elements.settingThemeContainer) return;
+
+        const swatches = this.elements.settingThemeContainer.querySelectorAll('.theme-swatch');
+        swatches.forEach(s => {
+            if (s.dataset.theme === `theme-${this.preferredTheme}`) {
+                s.classList.add('active');
+            } else {
+                s.classList.remove('active');
+            }
+        });
+    },
+
+    openSettings() {
+        if (this.elements.settingsModal) this.elements.settingsModal.classList.add('active');
+    },
+
+    closeSettings() {
+        if (this.elements.settingsModal) this.elements.settingsModal.classList.remove('active');
+    },
+
+    resetApp() {
+        if (confirm('Bạn có chắc xoá toàn bộ dữ liệu (cài đặt, vé, tên)? Ứng dụng sẽ tải lại.')) {
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.reload();
+        }
     }
 };
 

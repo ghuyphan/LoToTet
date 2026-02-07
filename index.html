@@ -43,6 +43,11 @@
     <div id="app">
         <!-- Home Screen -->
         <div id="home-screen" class="screen active">
+            <!-- Home Settings Button (Absolute Top Right) -->
+            <button id="btn-settings-home" class="btn-settings"
+                style="position: absolute; top: 20px; right: 20px; z-index: 10;" aria-label="Cài đặt">
+                <i class="fa-solid fa-gear"></i>
+            </button>
             <div class="home-content">
                 <div class="logo-container">
                     <h1 class="logo">🎰 Lô Tô</h1>
@@ -66,7 +71,7 @@
                 </div>
 
                 <div class="home-footer">
-                    <p>🌐 Chơi cùng mạng WiFi • Không cần đăng ký</p>
+                    <p>🌐 Chơi Online Mọi Nơi • Không cần đăng ký</p>
                 </div>
             </div>
         </div>
@@ -80,6 +85,9 @@
                 <button id="btn-view-players" class="btn-icon-only" aria-label="Danh sách người chơi">
                     <i class="fa-solid fa-users"></i>
                     <span id="player-count" class="badge">0</span>
+                </button>
+                <button id="btn-settings-host" class="btn-settings" aria-label="Cài đặt">
+                    <i class="fa-solid fa-gear"></i>
                 </button>
             </header>
 
@@ -181,8 +189,8 @@
                         class="fa-solid fa-arrow-left"></i></button>
                 <h2>Người Chơi</h2>
                 <div class="header-controls">
-                    <button id="btn-mute" class="btn-icon-only" aria-label="Tắt/Bật âm thanh">
-                        <i class="fa-solid fa-volume-high"></i>
+                    <button id="btn-settings-player" class="btn-settings" aria-label="Cài đặt">
+                        <i class="fa-solid fa-gear"></i>
                     </button>
                     <div class="connection-status" id="connection-status">
                         <span class="status-dot"></span>
@@ -300,6 +308,69 @@
                 </div>
                 <div class="modal-actions">
                     <button id="btn-close-player-list" class="btn btn-secondary">Đóng</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal">
+            <div class="modal-content glass-card">
+                <button class="modal-close" id="btn-close-settings" aria-label="Đóng"><i
+                        class="fa-solid fa-xmark"></i></button>
+                <div class="modal-header">
+                    <h3><i class="fa-solid fa-gear"></i> Cài Đặt</h3>
+                </div>
+
+                <div class="settings-content">
+                    <!-- Appearance -->
+                    <div class="settings-group">
+                        <h4>Giao Diện</h4>
+                        <div class="setting-item">
+                            <span class="setting-label">Chế độ Tối (Dark Mode)</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="setting-dark-mode">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="setting-item" id="setting-theme-container">
+                            <span class="setting-label">Màu Vé</span>
+                            <div class="theme-selector">
+                                <div class="theme-swatch swatch-blue active" data-theme="theme-blue"></div>
+                                <div class="theme-swatch swatch-green" data-theme="theme-green"></div>
+                                <div class="theme-swatch swatch-red" data-theme="theme-red"></div>
+                                <div class="theme-swatch swatch-purple" data-theme="theme-purple"></div>
+                                <div class="theme-swatch swatch-yellow" data-theme="theme-yellow"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Audio -->
+                    <div class="settings-group">
+                        <h4>Âm Thanh</h4>
+                        <div class="setting-item">
+                            <span class="setting-label">Hiệu ứng âm thanh</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="setting-sfx" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">Đọc số (TTS)</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="setting-tts" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- System -->
+                    <div class="settings-group">
+                        <h4>Hệ Thống</h4>
+                        <button id="btn-reset-app" class="btn btn-small btn-secondary"
+                            style="width: 100%; color: var(--error); border-color: var(--error);">
+                            <i class="fa-solid fa-trash"></i> Xoá dữ liệu & Đặt lại
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

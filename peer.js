@@ -302,7 +302,7 @@ const P2P = {
                 if (state === 'failed' || state === 'disconnected') {
                     console.warn('[ICE] Connection failed. Likely a Firewall/NAT issue.');
                     if (window.Game) {
-                        Game.showToast(`Kết nối không ổn định. Hãy đảm bảo cả 2 thiết bị cùng dùng chung WiFi!`, 'warning');
+                        Game.showToast(`Kết nối không ổn định. Hãy kiểm tra lại đường truyền mạng!`, 'warning');
                     }
                 }
             };
@@ -497,9 +497,16 @@ const P2P = {
                 if (this.isHost) {
                     // Host acknowledges wait signal and broadcasts a toast to everyone
                     // We can reuse confirmWin logic but just for toast
+                    // Try to get name from Game.players if available
+                    let playerName = data.playerId.substr(0, 4);
+                    if (window.Game && window.Game.players.has(data.playerId)) {
+                        const p = window.Game.players.get(data.playerId);
+                        if (p && p.name) playerName = p.name;
+                    }
+
                     const waitMsg = {
                         type: 'toast',
-                        message: `Người chơi ${data.playerId.substr(0, 4)} đang ĐỢI!`,
+                        message: `Người chơi ${playerName} đang ĐỢI!`,
                         style: 'info'
                     };
 
