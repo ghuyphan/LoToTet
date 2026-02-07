@@ -564,6 +564,11 @@ body {
 .btn-icon-only {
     position: relative;
     /* Ensure badges are positioned correctly */
+}
+
+.btn-icon-only {
+    position: relative;
+    /* Ensure badges are positioned correctly */
     overflow: visible;
     /* Allow badge to overlap */
 }
