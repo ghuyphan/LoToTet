@@ -170,6 +170,110 @@ h3 i {
 }
 
 /* =============================================
+   FORM ELEMENTS (Select, Input)
+   ============================================= */
+/* Form Select Used in Dropdowns */
+.form-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    width: 100%;
+    padding: 10px 15px;
+    padding-right: 35px;
+    /* Space for arrow */
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    background-color: rgba(255, 255, 255, 0.8) !important;
+    color: var(--text-primary) !important;
+    font-family: inherit;
+    font-size: 1rem;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+
+    /* Custom Arrow */
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232d3436' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 10px center !important;
+    background-size: 16px !important;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.form-select:focus {
+    border-color: var(--gold-primary) !important;
+    box-shadow: 0 0 0 3px rgba(255, 165, 2, 0.2);
+}
+
+[data-theme="dark"] .form-select {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #fff !important;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
+}
+
+.form-select option {
+    background-color: white;
+    color: #333;
+}
+
+[data-theme="dark"] .form-select option {
+    background-color: #2d3436;
+    color: #fff;
+}
+
+/* =============================================
+   FORM ELEMENTS (Select, Input)
+   ============================================= */
+/* Form Select Used in Dropdowns */
+.form-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    width: 100%;
+    padding: 10px 15px;
+    padding-right: 35px;
+    /* Space for arrow */
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    background-color: rgba(255, 255, 255, 0.8) !important;
+    color: var(--text-primary) !important;
+    font-family: inherit;
+    font-size: 1rem;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+
+    /* Custom Arrow */
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232d3436' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 10px center !important;
+    background-size: 16px !important;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.form-select:focus {
+    border-color: var(--gold-primary) !important;
+    box-shadow: 0 0 0 3px rgba(255, 165, 2, 0.2);
+}
+
+[data-theme="dark"] .form-select {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #fff !important;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
+}
+
+.form-select option {
+    background-color: white;
+    color: #333;
+}
+
+[data-theme="dark"] .form-select option {
+    background-color: #2d3436;
+    color: #fff;
+}
+
+/* =============================================
    SLIDERS (Range Input)
    ============================================= */
 input[type=range] {
@@ -566,6 +670,35 @@ body {
     }
 }
 
+.btn-danger {
+    background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+    color: var(--error);
+    border: 1px solid var(--error);
+    box-shadow: var(--shadow-sm);
+}
+
+@media (hover: hover) {
+    .btn-danger:hover:not(:disabled) {
+        background: linear-gradient(135deg, #ffcdd2 0%, #ef9a9a 100%);
+        color: #c0392b;
+        box-shadow: var(--shadow-md), 0 4px 15px rgba(255, 118, 117, 0.3);
+        transform: translateY(-2px) scale(1.02);
+    }
+}
+
+[data-theme="dark"] .btn-danger {
+    background: rgba(255, 118, 117, 0.1);
+    border-color: rgba(255, 118, 117, 0.3);
+    color: #ff7675;
+}
+
+[data-theme="dark"] .btn-danger:hover:not(:disabled) {
+    background: rgba(255, 118, 117, 0.2);
+    border-color: rgba(255, 118, 117, 0.5);
+    box-shadow: 0 0 15px rgba(255, 118, 117, 0.2);
+    color: #fff;
+}
+
 .btn-large {
     flex-direction: column;
     padding: var(--space-lg) var(--space-xl);
@@ -687,13 +820,33 @@ body {
     background: linear-gradient(135deg, #FFB347 0%, #FF8C00 50%, #FF6B00 100%);
     color: var(--text-white);
     border-radius: var(--radius-lg);
-    box-shadow:
-        var(--shadow-md),
+    box-shadow: var(--shadow-md),
         0 8px 32px rgba(255, 140, 0, 0.4),
         inset 0 2px 0 rgba(255, 255, 255, 0.3),
         inset 0 -2px 4px rgba(0, 0, 0, 0.1);
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     animation: drawButtonPulse 2s ease-in-out infinite;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-draw:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow:
+        var(--shadow-lg),
+        0 12px 40px rgba(255, 140, 0, 0.5),
+        inset 0 2px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-draw:active {
+    transform: translateY(2px) scale(0.98);
+    box-shadow:
+        var(--shadow-sm),
+        0 4px 16px rgba(255, 140, 0, 0.3),
+        inset 0 2px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -2px 4px rgba(0, 0, 0, 0.1);
 }
 
 @keyframes drawButtonPulse {
@@ -716,24 +869,61 @@ body {
     }
 }
 
-@media (hover: hover) {
-    .btn-draw:hover:not(:disabled) {
-        transform: translateY(-4px) scale(1.02);
-        box-shadow:
-            var(--shadow-xl),
-            0 16px 60px rgba(255, 140, 0, 0.6),
-            inset 0 2px 0 rgba(255, 255, 255, 0.3),
-            inset 0 -2px 4px rgba(0, 0, 0, 0.1);
-        animation: none;
-    }
-}
-
 .btn-draw:disabled {
     background: linear-gradient(135deg, #DFE6E9 0%, #B2BEC3 100%);
     box-shadow: var(--shadow-sm);
     animation: none;
     color: var(--text-muted);
     text-shadow: none;
+}
+
+/* Form Select Used in Dropdowns */
+.form-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    width: 100%;
+    padding: 10px 15px;
+    padding-right: 35px;
+    /* Space for arrow */
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    background-color: rgba(255, 255, 255, 0.8);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 1rem;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+
+    /* Custom Arrow */
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232d3436' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 16px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.form-select:focus {
+    border-color: var(--gold-primary);
+    box-shadow: 0 0 0 3px rgba(255, 165, 2, 0.2);
+}
+
+[data-theme="dark"] .form-select {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+}
+
+.form-select option {
+    background-color: white;
+    color: #333;
+}
+
+[data-theme="dark"] .form-select option {
+    background-color: #2d3436;
+    color: #fff;
 }
 
 .draw-icon {
@@ -2342,7 +2532,7 @@ body {
     gap: var(--space-sm);
     margin-top: var(--space-md);
     padding-top: var(--space-md);
-    border-top: 1px solid rgba(45, 52, 54, 0.08);
+    /* border-top: 1px solid rgba(45, 52, 54, 0.08); */
 }
 
 .auto-draw-speed label {
@@ -2408,7 +2598,6 @@ body {
 .auto-draw-speed {
     margin-top: var(--space-sm);
     padding-top: var(--space-sm);
-    border-top: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 [data-theme="dark"] .auto-draw-speed {
@@ -3242,4 +3431,21 @@ body {
     border: 2px solid var(--success) !important;
     z-index: 10;
     box-shadow: 0 0 5px rgba(0, 184, 148, 0.5);
+}
+
+/* =============================================
+   REAL VOICE MODE TWEAKS
+   ============================================= */
+/* Hide text when real voice is active */
+.current-number-section.real-voice-mode .rhyme-text,
+.current-number-section.real-voice-mode .number-text,
+.current-number-section.real-voice-mode #number-text {
+    display: none !important;
+}
+
+/* Center and scale up the ball since text is gone */
+.current-number-section.real-voice-mode .number-ball-container {
+    margin-bottom: 0;
+    transform: scale(1.2);
+    transition: transform 0.3s ease;
 }

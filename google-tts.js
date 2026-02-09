@@ -43,10 +43,21 @@ const GoogleTTS = {
             };
 
             // Attempt to play
-            audio.play().catch(e => {
+            const playPromise = audio.play().catch(e => {
                 console.warn('Google TTS Play Error', e);
                 reject(e);
             });
+
+            // Timeout after 10 seconds
+            setTimeout(() => {
+                if (!audio.paused) {
+                    audio.pause();
+                    resolve(); // Resolve anyway so game continues
+                } else if (audio.currentTime === 0) {
+                    // Hasn't started yet
+                    resolve();
+                }
+            }, 10000);
         });
     }
 };

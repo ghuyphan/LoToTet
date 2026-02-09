@@ -131,6 +131,9 @@ const TTS = {
         const useOnline = localStorage.getItem('loto_use_online_tts');
         this.config.useOnlineTTS = useOnline === 'true';
 
+        const useRealAudio = localStorage.getItem('loto_use_real_audio');
+        this.config.useRealAudio = useRealAudio === 'true';
+
         // Load Vietnamese voice when available
         this.loadVoices();
 
@@ -270,6 +273,9 @@ const TTS = {
             utterance.onend = resolve;
             utterance.onerror = resolve;
             this.synth.speak(utterance);
+
+            // Safety timeout (10s)
+            setTimeout(resolve, 10000);
         });
     },
 
@@ -293,25 +299,95 @@ const TTS = {
         this.config.volume = Math.max(0, Math.min(1, volume));
     },
 
-    // Toggle Online TTS
-    setUseOnlineTTS(enabled) {
-        this.config.useOnlineTTS = enabled;
-        localStorage.setItem('loto_use_online_tts', enabled);
+    // Set Voice Mode: 'system', 'google', 'real'
+    setVoiceMode(mode) {
+        this.config.voiceMode = mode;
+        // Update flags for backward compatibility or internal logic
+        this.config.useOnlineTTS = (mode === 'google');
+        this.config.useRealAudio = (mode === 'real');
 
-        // Pre-connect or check?
-        if (enabled) {
-            console.log('Switched to Google TTS (Online)');
+        localStorage.setItem('loto_voice_mode', mode);
+        console.log(`TTS Mode switched to: ${mode.toUpperCase()}`);
+    },
+
+    // Announce a called number with rhyme
+    async announceNumber(num) {
+        // Priority check based on mode
+        if (this.config.voiceMode === 'real') {
+            await this.playRealAudio(num);
+        } else if (this.config.voiceMode === 'google') {
+            // Try Google, fallback to system is handled inside speak() if we wire it right, 
+            // but let's be explicit:
+            if (window.GoogleTTS) {
+                try {
+                    const rhyme = this.getNumberRhyme(num);
+                    const text = `Số ${this.numberToWords(num)}... ${rhyme}`;
+                    await window.GoogleTTS.speak(text, 1);
+                } catch (e) {
+                    console.warn('Google TTS failed, falling back to System');
+                    await this.speakNumber(num);
+                }
+            } else {
+                await this.speakNumber(num);
+            }
         } else {
-            console.log('Switched to System TTS (Offline)');
+            // System default
+            await this.speakNumber(num);
         }
+    },
+
+    // Play recorded audio file
+    async playRealAudio(num) {
+        return new Promise((resolve) => {
+            // Helper to try playing a file with specific extension
+            const tryPlay = (extIndex = 0) => {
+                const extensions = ['webm', 'mp3']; // Prioritize webm as that's what we have
+                if (extIndex >= extensions.length) {
+                    // All formats failed
+                    console.warn(`Audio files for number ${num} not found. Falling back to TTS.`);
+                    this.speakNumber(num).then(resolve);
+                    return;
+                }
+
+                const ext = extensions[extIndex];
+                // User moved files to root 'audio' folder with 'raoloto' prefix
+                const audio = new Audio(`audio/raoloto${num}.${ext}`);
+
+                // Apply current volume and rate
+                audio.volume = this.config.volume;
+                audio.playbackRate = this.config.rate;
+
+                audio.onended = () => resolve();
+
+                audio.onerror = () => {
+                    // Try next extension
+                    tryPlay(extIndex + 1);
+                };
+
+                audio.play().catch(e => {
+                    // If play failed (e.g. not allowed), try next or fallback
+                    console.warn(`Failed to play ${ext}:`, e);
+                    tryPlay(extIndex + 1);
+                });
+            };
+
+            // Start trying with the first extension
+            tryPlay();
+
+            // Safety timeout for Real Audio (10s)
+            setTimeout(() => {
+                resolve();
+            }, 10000);
+        });
     },
 
     // Stop speaking
     stop() {
         this.synth.cancel();
-        // Also need to stop Edge TTS? 
-        // EdgeTTS creates new AudioContext for each speak, so previous one ends on its own or we can reload page. 
-        // For now, simpler implementation is fine.
+        if (window.currentAudio) {
+            window.currentAudio.pause();
+            window.currentAudio = null;
+        }
     }
 };
 

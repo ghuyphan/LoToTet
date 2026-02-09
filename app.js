@@ -53,6 +53,7 @@ const Game = {
         this.loadSettings();
         this.initShoutMenu();
         this.setupTTSControls();
+        this.setupAutoDrawListeners();
         this.setupBeforeUnload();
 
         if (window.AudioManager) AudioManager.init();
@@ -348,14 +349,54 @@ const Game = {
         if (this.elements.settingTts) {
             this.elements.settingTts.addEventListener('change', (e) => {
                 this.ttsEnabled = e.target.checked;
+                // Disable/Enable the dropdown based on master switch
+                const dropdown = document.getElementById('setting-voice-mode');
+                if (dropdown) dropdown.disabled = !this.ttsEnabled;
                 this.saveSettings();
             });
         }
-        if (this.elements.settingOnlineTts) {
-            this.elements.settingOnlineTts.addEventListener('change', (e) => {
-                TTS.setUseOnlineTTS(e.target.checked);
+
+        // New Voice Mode Dropdown Logic
+        const voiceModeSelect = document.getElementById('setting-voice-mode');
+        if (voiceModeSelect) {
+            voiceModeSelect.addEventListener('change', (e) => {
+                const mode = e.target.value;
+                TTS.setVoiceMode(mode);
             });
+
+            // Init state from storage or default
+            const savedMode = localStorage.getItem('loto_voice_mode') || 'real'; // Default to Real
+            voiceModeSelect.value = savedMode;
+            TTS.setVoiceMode(savedMode);
+
+            // Sync disabled state
+            voiceModeSelect.disabled = !this.ttsEnabled;
+
+            // Sync with Host Screen Dropdown
+            const hostVoiceMode = document.getElementById('host-voice-mode');
+            if (hostVoiceMode) {
+                hostVoiceMode.value = savedMode;
+                hostVoiceMode.disabled = !this.ttsEnabled;
+
+                // Host dropdown changes Settings dropdown
+                hostVoiceMode.addEventListener('change', (e) => {
+                    const mode = e.target.value;
+                    voiceModeSelect.value = mode;
+                    TTS.setVoiceMode(mode);
+                    this.updateSpeedSliderVisibility(mode);
+                });
+
+                // Settings dropdown changes Host dropdown
+                voiceModeSelect.addEventListener('change', (e) => {
+                    hostVoiceMode.value = e.target.value;
+                    this.updateSpeedSliderVisibility(e.target.value);
+                });
+
+                // Initial visibility check
+                this.updateSpeedSliderVisibility(savedMode);
+            }
         }
+
         if (this.elements.btnResetApp) this.elements.btnResetApp.addEventListener('click', () => this.resetApp());
         if (this.elements.settingThemeContainer) {
             this.elements.settingThemeContainer.querySelectorAll('.theme-swatch').forEach(swatch => {
@@ -365,6 +406,19 @@ const Game = {
                 });
             });
         }
+    },
+
+    updateSpeedSliderVisibility(mode) {
+        const speedRow = document.getElementById('speed-control-row');
+        if (speedRow) {
+            // Only show speed slider for System TTS
+            // (User requested to hide it for Google and Real Audio)
+            const show = (mode === 'system');
+            speedRow.style.display = show ? 'flex' : 'none';
+        }
+    },
+
+    setupAutoDrawListeners() {
         if (this.elements.autoDrawToggle) this.elements.autoDrawToggle.addEventListener('change', () => this.toggleAutoDraw());
         if (this.elements.autoDrawInterval) {
             this.elements.autoDrawInterval.addEventListener('change', () => {
@@ -858,30 +912,40 @@ const Game = {
         this.isDrawing = true;
         this.elements.btnDraw.disabled = true;
 
-        const ballContainer = document.querySelector('.number-ball-container');
-        if (ballContainer) ballContainer.classList.add('shaking');
+        try {
+            const ballContainer = document.querySelector('.number-ball-container');
+            if (ballContainer) ballContainer.classList.add('shaking');
 
-        if (window.AudioManager) AudioManager.playDraw();
-        if (navigator.vibrate) navigator.vibrate(50);
+            if (window.AudioManager) AudioManager.playDraw();
+            if (navigator.vibrate) navigator.vibrate(50);
 
-        await new Promise(resolve => setTimeout(resolve, 400));
+            await new Promise(resolve => setTimeout(resolve, 400));
 
-        if (ballContainer) ballContainer.classList.remove('shaking');
+            if (ballContainer) ballContainer.classList.remove('shaking');
 
-        const number = this.remainingNumbers.pop();
-        this.calledNumbers.add(number);
-        this.currentNumber = number;
+            const number = this.remainingNumbers.pop();
+            this.calledNumbers.add(number);
+            this.currentNumber = number;
 
-        this.updateCurrentNumber(number);
-        this.markNumberCalled(number);
-        this.elements.calledCount.textContent = this.calledNumbers.size;
+            this.updateCurrentNumber(number);
+            this.markNumberCalled(number);
+            this.elements.calledCount.textContent = this.calledNumbers.size;
 
-        P2P.broadcastNumber(number, TTS.numberToWords(number));
-        await TTS.announceNumber(number);
+            P2P.broadcastNumber(number, TTS.numberToWords(number));
 
-        this.isDrawing = false;
-        this.elements.btnDraw.disabled = false;
-        this.saveHostState();
+            // Force a timeout on the announcement to prevent hangs
+            const announcementPromise = TTS.announceNumber(number);
+            const timeoutPromise = new Promise(resolve => setTimeout(resolve, 10000)); // 10s max
+            await Promise.race([announcementPromise, timeoutPromise]);
+
+        } catch (error) {
+            console.error('Error during draw:', error);
+            this.showToast('Có lỗi xảy ra khi xướng số', 'error');
+        } finally {
+            this.isDrawing = false;
+            this.elements.btnDraw.disabled = false;
+            this.saveHostState();
+        }
     },
 
     updateCurrentNumber(number) {
@@ -890,6 +954,16 @@ const Game = {
         ball.classList.remove('new-number');
         void ball.offsetWidth;
         ball.classList.add('new-number');
+
+        // Toggle UI mode based on Voice setting
+        const section = ball.closest('.current-number-section');
+        if (section) {
+            if (TTS.config.voiceMode === 'real') {
+                section.classList.add('real-voice-mode');
+            } else {
+                section.classList.remove('real-voice-mode');
+            }
+        }
 
         const rhyme = TTS.getNumberRhyme(number);
         if (P2P.isHost) {
