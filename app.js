@@ -176,6 +176,12 @@ const Game = {
             this.showScreen('player-screen');
             this.showToast(`Chào mừng ${data.name || ''}!`, 'success');
 
+            if (data.voiceMode) {
+                TTS.setVoiceMode(data.voiceMode);
+                const voiceModeSelect = document.getElementById('setting-voice-mode');
+                if (voiceModeSelect) voiceModeSelect.value = data.voiceMode;
+            }
+
             P2P.saveSession();
         };
 
@@ -222,6 +228,16 @@ const Game = {
 
         P2P.onEmote = (emoji, senderId) => {
             this.renderEmote(emoji);
+        };
+
+
+        P2P.onVoiceMode = (mode) => {
+            TTS.setVoiceMode(mode);
+            const voiceModeSelect = document.getElementById('setting-voice-mode');
+            if (voiceModeSelect) {
+                voiceModeSelect.value = mode;
+            }
+            this.showToast(`Chủ phòng đã chuyển sang chế độ: ${mode === 'real' ? 'Giọng thật' : (mode === 'google' ? 'Chị Google' : 'Máy đọc')}`, 'info');
         };
     },
 
@@ -384,6 +400,7 @@ const Game = {
                     voiceModeSelect.value = mode;
                     TTS.setVoiceMode(mode);
                     this.updateSpeedSliderVisibility(mode);
+                    P2P.broadcastVoiceMode(mode); // Sync to players
                 });
 
                 // Settings dropdown changes Host dropdown

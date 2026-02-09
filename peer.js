@@ -64,6 +64,7 @@ const P2P = {
     onWaitSignal: null,
     onEmote: null,
     onShout: null,
+    onVoiceMode: null, // Callback for voice mode sync
     onError: null,
     onReconnecting: null,
     onReconnected: null,
@@ -241,7 +242,8 @@ const P2P = {
                     gameState: {
                         calledNumbers: Array.from(Game.calledNumbers),
                         gameStarted: Game.gameStarted
-                    }
+                    },
+                    voiceMode: TTS.config.voiceMode // Send current voice mode
                 });
             }
         };
@@ -435,6 +437,9 @@ const P2P = {
                 if (this.onShout) this.onShout(data.text, data.senderId);
                 if (this.isHost) this.broadcastShout(data.text, conn ? conn.peer : data.senderId);
                 break;
+            case 'voiceMode':
+                if (this.onVoiceMode) this.onVoiceMode(data.mode);
+                break;
         }
     },
 
@@ -544,6 +549,14 @@ const P2P = {
         this.roomCode = null;
 
         if (clearSessionData) this.clearSession();
+    },
+
+    broadcastVoiceMode(mode) {
+        if (!this.isHost) return;
+        const message = { type: 'voiceMode', mode };
+        this.connections.forEach((conn) => {
+            if (conn.open) conn.send(message);
+        });
     }
 };
 
