@@ -119,11 +119,13 @@ const TTS = {
         pitch: 1,
         volume: 1,
         voice: null,
-        useOnlineTTS: false // Renamed from useEdgeTTS
+        useOnlineTTS: false, // Renamed from useEdgeTTS
+        voiceMode: 'real'
     },
 
     // Speech synthesis instance
     synth: window.speechSynthesis,
+    currentAudio: null, // Track real audio or Google TTS audio locally if needed
 
     // Initialize TTS
     init() {
@@ -131,8 +133,14 @@ const TTS = {
         const useOnline = localStorage.getItem('loto_use_online_tts');
         this.config.useOnlineTTS = useOnline === 'true';
 
-        const useRealAudio = localStorage.getItem('loto_use_real_audio');
-        this.config.useRealAudio = useRealAudio === 'true';
+        // Load voice mode
+        const savedMode = localStorage.getItem('loto_voice_mode');
+        if (savedMode) {
+            this.setVoiceMode(savedMode);
+        } else {
+            const useRealAudio = localStorage.getItem('loto_use_real_audio');
+            this.setVoiceMode(useRealAudio === 'true' ? 'real' : 'system');
+        }
 
         // Load Vietnamese voice when available
         this.loadVoices();
@@ -239,7 +247,7 @@ const TTS = {
                 this.synth.speak(utterance);
 
                 // Safety timeout
-                setTimeout(resolve, 5000);
+                setTimeout(resolve, 20000);
             }, 100);
         });
     },
@@ -281,43 +289,12 @@ const TTS = {
 
     // Announce a called number with rhyme
     async announceNumber(num) {
-        await this.speakNumber(num);
-    },
+        this.stop(); // Stop any previous audio
 
-    // Announce winner
-    async announceWinner(name = 'Có người') {
-        await this.speak(`${name} đã trúng lô tô! Xin chúc mừng!`);
-    },
-
-    // Set speech rate
-    setRate(rate) {
-        this.config.rate = Math.max(0.5, Math.min(1.5, rate));
-    },
-
-    // Set volume
-    setVolume(volume) {
-        this.config.volume = Math.max(0, Math.min(1, volume));
-    },
-
-    // Set Voice Mode: 'system', 'google', 'real'
-    setVoiceMode(mode) {
-        this.config.voiceMode = mode;
-        // Update flags for backward compatibility or internal logic
-        this.config.useOnlineTTS = (mode === 'google');
-        this.config.useRealAudio = (mode === 'real');
-
-        localStorage.setItem('loto_voice_mode', mode);
-        console.log(`TTS Mode switched to: ${mode.toUpperCase()}`);
-    },
-
-    // Announce a called number with rhyme
-    async announceNumber(num) {
         // Priority check based on mode
         if (this.config.voiceMode === 'real') {
             await this.playRealAudio(num);
         } else if (this.config.voiceMode === 'google') {
-            // Try Google, fallback to system is handled inside speak() if we wire it right, 
-            // but let's be explicit:
             if (window.GoogleTTS) {
                 try {
                     const rhyme = this.getNumberRhyme(num);
@@ -336,28 +313,93 @@ const TTS = {
         }
     },
 
+    // Announce winner
+    async announceWinner(name = 'Có người') {
+        await this.speak(`${name} đã trúng lô tô! Xin chúc mừng!`);
+    },
+
+    // Set speech rate
+    setRate(rate) {
+        this.config.rate = Math.max(0.5, Math.min(1.5, rate));
+    },
+
+    // Set volume
+    setVolume(volume) {
+        this.config.volume = Math.max(0, Math.min(1, volume));
+
+        // Update currently playing audio if any
+        if (this.currentAudio) {
+            this.currentAudio.volume = this.config.volume;
+        }
+
+        // Update GoogleTTS volume if active
+        if (window.GoogleTTS) {
+            window.GoogleTTS.setVolume(this.config.volume);
+        }
+    },
+
+    // Set Voice Mode: 'system', 'google', 'real'
+    setVoiceMode(mode) {
+        this.config.voiceMode = mode;
+        // Update flags for backward compatibility or internal logic
+        this.config.useOnlineTTS = (mode === 'google');
+        // this.config.useRealAudio = (mode === 'real'); // Removed legacy flag usage inside object
+
+        localStorage.setItem('loto_voice_mode', mode);
+        console.log(`TTS Mode switched to: ${mode.toUpperCase()}`);
+    },
+
     // Play recorded audio file
     async playRealAudio(num) {
         return new Promise((resolve) => {
+            let hasResolved = false;
+            const safeResolve = () => {
+                if (!hasResolved) {
+                    hasResolved = true;
+                    if (this.currentAudio === audio) this.currentAudio = null;
+                    resolve();
+                }
+            };
+
+            // Global fallback timeout (just in case everything fails)
+            const fallbackTimeout = setTimeout(safeResolve, 60000); // 1 minute hard limit
+
+            let audio = null;
+
             // Helper to try playing a file with specific extension
             const tryPlay = (extIndex = 0) => {
                 const extensions = ['webm', 'mp3']; // Prioritize webm as that's what we have
                 if (extIndex >= extensions.length) {
                     // All formats failed
                     console.warn(`Audio files for number ${num} not found. Falling back to TTS.`);
-                    this.speakNumber(num).then(resolve);
+                    clearTimeout(fallbackTimeout);
+                    this.speakNumber(num).then(safeResolve);
                     return;
                 }
 
                 const ext = extensions[extIndex];
                 // User moved files to root 'audio' folder with 'raoloto' prefix
-                const audio = new Audio(`audio/raoloto${num}.${ext}`);
+                audio = new Audio(`audio/raoloto${num}.${ext}`);
+                this.currentAudio = audio; // Track global audio
 
                 // Apply current volume and rate
                 audio.volume = this.config.volume;
                 audio.playbackRate = this.config.rate;
 
-                audio.onended = () => resolve();
+                // Smart Duration Handling
+                audio.addEventListener('loadedmetadata', () => {
+                    const duration = audio.duration;
+                    if (duration && duration !== Infinity) {
+                        // Clear the initial fallback
+                        clearTimeout(fallbackTimeout);
+                        // Set a new safety timeout based on actual duration + buffer
+                        const bufferTime = 2000; // 2 seconds buffer
+                        const safetyTime = (duration * 1000) / this.config.rate + bufferTime;
+                        setTimeout(safeResolve, safetyTime);
+                    }
+                });
+
+                audio.onended = safeResolve;
 
                 audio.onerror = () => {
                     // Try next extension
@@ -373,17 +415,20 @@ const TTS = {
 
             // Start trying with the first extension
             tryPlay();
-
-            // Safety timeout for Real Audio (10s)
-            setTimeout(() => {
-                resolve();
-            }, 10000);
         });
     },
 
     // Stop speaking
     stop() {
         this.synth.cancel();
+        if (this.currentAudio) {
+            this.currentAudio.pause();
+            this.currentAudio = null;
+        }
+        if (window.GoogleTTS) {
+            window.GoogleTTS.stop();
+        }
+        // Legacy check
         if (window.currentAudio) {
             window.currentAudio.pause();
             window.currentAudio = null;

@@ -933,10 +933,8 @@ const Game = {
 
             P2P.broadcastNumber(number, TTS.numberToWords(number));
 
-            // Force a timeout on the announcement to prevent hangs
-            const announcementPromise = TTS.announceNumber(number);
-            const timeoutPromise = new Promise(resolve => setTimeout(resolve, 10000)); // 10s max
-            await Promise.race([announcementPromise, timeoutPromise]);
+            // Wait for announcement to finish (logic handled in TTS module)
+            await TTS.announceNumber(number);
 
         } catch (error) {
             console.error('Error during draw:', error);

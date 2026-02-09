@@ -6,6 +6,7 @@
 const GoogleTTS = {
     // Configuration
     LANG: 'vi',
+    currentAudio: null, // Track current audio
 
     // Google Translate TTS Endpoint
     // client=tw-ob is the standard for unofficial access
@@ -15,10 +16,15 @@ const GoogleTTS = {
     // Returns a Promise that resolves when audio finishes playing
     async speak(text, rate = 1) {
         return new Promise((resolve, reject) => {
+            if (this.currentAudio) {
+                this.currentAudio.pause();
+                this.currentAudio = null;
+            }
+
             const audio = new Audio();
+            this.currentAudio = audio; // Store reference
 
             // Construct URL
-            // client=gtx seems to be more stable than tw-ob
             const params = new URLSearchParams({
                 ie: 'UTF-8',
                 q: text,
@@ -30,35 +36,53 @@ const GoogleTTS = {
             // Use allorigins proxy to bypass CORS and 404 blocks
             const googleUrl = `${this.ENDPOINT}?${params.toString()}`;
             audio.src = `https://api.allorigins.win/raw?url=${encodeURIComponent(googleUrl)}`;
-            // audio.crossOrigin = 'anonymous'; // REMOVED: This causes CORS errors. simple playback doesn't need it.
+
+            // Set initial volume if TTS config exists (accessed via global TTS object if available, or default)
+            audio.volume = window.TTS ? window.TTS.config.volume : 1.0;
 
             audio.onended = () => {
+                if (this.currentAudio === audio) this.currentAudio = null;
                 resolve();
             };
 
             audio.onerror = (e) => {
                 console.warn('Google TTS Error', e);
-                // If it fails (e.g. 429 Too Many Requests), reject so we fallback
+                if (this.currentAudio === audio) this.currentAudio = null;
                 reject(e);
             };
 
             // Attempt to play
-            const playPromise = audio.play().catch(e => {
+            audio.play().catch(e => {
                 console.warn('Google TTS Play Error', e);
+                if (this.currentAudio === audio) this.currentAudio = null;
                 reject(e);
             });
 
             // Timeout after 10 seconds
             setTimeout(() => {
-                if (!audio.paused) {
+                if (audio && !audio.paused) {
                     audio.pause();
+                    if (this.currentAudio === audio) this.currentAudio = null;
                     resolve(); // Resolve anyway so game continues
-                } else if (audio.currentTime === 0) {
+                } else if (audio && audio.currentTime === 0 && !audio.ended) {
                     // Hasn't started yet
                     resolve();
                 }
             }, 10000);
         });
+    },
+
+    setVolume(volume) {
+        if (this.currentAudio) {
+            this.currentAudio.volume = Math.max(0, Math.min(1, volume));
+        }
+    },
+
+    stop() {
+        if (this.currentAudio) {
+            this.currentAudio.pause();
+            this.currentAudio = null;
+        }
     }
 };
 
